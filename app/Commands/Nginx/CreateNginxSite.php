@@ -22,7 +22,7 @@ class CreateNginxSite extends Command
      *
      * @var string
      */
-    protected $description = 'Command description';
+    protected $description = 'Create and configure an Nginx site for a Laravel project';
 
     /**
      * Execute the console command.
