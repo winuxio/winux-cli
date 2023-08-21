@@ -16,7 +16,8 @@ class DisableNginxSite extends Command
 	public function handle(): mixed
 	{
 		$domain = $this->argument('domain');
-		if (Site::disable($domain)) {
+
+		if (Site::make($domain)->disable()) {
 			$this->info('Site disabled successfully!');
 			return 0;
 		} else {

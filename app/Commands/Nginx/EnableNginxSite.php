@@ -21,8 +21,8 @@ class EnableNginxSite extends Command
 	public function handle()
     {
         $domain = $this->argument('domain');
-
-        if (Site::enable($domain)) {
+		
+        if (Site::make($domain)->enable()) {
             $this->info('Site activated successfully!');
             return 0;
         } else {

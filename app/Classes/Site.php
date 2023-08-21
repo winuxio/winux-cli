@@ -10,36 +10,43 @@ class Site
 	protected static string $configPath = '/etc/nginx/sites-available';
 	protected static string $linkPath = '/etc/nginx/sites-enabled';
 
-	public function __construct(public string $domain, public string $path)
+	public string $configFile = '';
+	public string $linkFile = '';
+
+	public function __construct(public string $domain, public ?string $path = null)
 	{
+		$this->configFile = static::$configPath . "/$domain";
+		$this->linkFile = static::$linkPath . "/$domain";
 	}
 
-	public static function create(string $domain, string $path)
+	public static function create(string $domain, string $path): static
 	{
 		$newSite = new static($domain, $path);
 		// $config = $newSite->generate();
 		return $newSite;
 	}
 
-	public static function enable(string $domain): bool
+	public static function make(string $domain): static
 	{
-		$destFile = static::$configPath . "/$domain";
-		$link = static::$linkPath . "/$domain";;
+		return new static($domain);
+	}
 
+	public function enable(): bool
+	{
 		// Check if the symbolic link exists
-		if (file_exists($link)) {
+		if (file_exists($this->linkFile)) {
 			// Check if the symbolic link points to the correct file
-			if (readlink($link) === $destFile) {
+			if (readlink($this->linkFile) === $this->configFile) {
 				// $this->info('Symbolic link already exists and is configured correctly.');
 				return true;
 			} else {
 				// Remove the existing symbolic link if it doesn't point to the correct file
-				unlink($link);
+				unlink($this->linkFile);
 			}
 		}
 
 		// Create the symbolic link
-		$process = new Process(['sudo', 'ln', '-s', $destFile, $link]);
+		$process = new Process(['sudo', 'ln', '-s', $this->configFile, $this->linkFile]);
 		$process->run();
 
 		if (!$process->isSuccessful()) {
@@ -51,18 +58,16 @@ class Site
 		return true;
 	}
 
-	public static function disable(string $domain): bool
+	public function disable(): bool
 	{
-		$link = static::$linkPath . "/$domain";
-
 		// Check if the symbolic link exists
-		if (!file_exists($link)) {
+		if (!file_exists($this->linkFile)) {
 			// $this->info("Symbolic link $link does not exist. Site is already disabled.");
 			return true;
 		}
 
 		// Remove the symbolic link
-		$process = new Process(['sudo', 'rm', $link]);
+		$process = new Process(['sudo', 'rm', $this->linkFile]);
 		$process->run();
 
 		if (!$process->isSuccessful()) {
@@ -87,7 +92,7 @@ class Site
 
 	public function save(string $config): bool
 	{
-		$process = new Process(['sudo', 'tee', $this->path], null, null, $config);
+		$process = new Process(['sudo', 'tee', $this->configFile], null, null, $config);
 		$process->run();
 
 		return $process->isSuccessful();
@@ -100,17 +105,36 @@ class Site
 
 	private static function templateData(): string
 	{
-		return File::get(static::templatePath());
+		$templatePath = static::templatePath();
+		// dump('Template Path: ' . $templatePath);
+		return File::get($templatePath);
 	}
 
 	public static function configDiff(string $configuration): string
 	{
+		// Create Named Pipes for both files
+		$pipe1 = tmpfile();
+		$pipe2 = tmpfile();
+
+		// Write content to the Named Pipes
+		fwrite($pipe1, static::templateData());
+		fwrite($pipe2, $configuration);
+
+		// Get the paths for the Named Pipes
+		$path1 = stream_get_meta_data($pipe1)['uri'];
+		$path2 = stream_get_meta_data($pipe2)['uri'];
+
 		// Run a diff between the $templateConfig and the generated $config and display it to the user
 		$process = new Process([
-			'diff', '--color=always', '--unified=1', static::templatePath(), '-'
-		], null, null, $configuration);
+			'diff', '--color=always', '--unified=1', $path1, $path2
+		]);
 		$process->run();
 		$diffOutput = $process->getOutput();
+
+		// Close the Named Pipes
+		fclose($pipe1);
+		fclose($pipe2);
+
 		$lines = explode("\n", $diffOutput);
 
 		// Skip the header lines, including the line starting with @@

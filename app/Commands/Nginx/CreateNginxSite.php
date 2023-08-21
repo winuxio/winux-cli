@@ -49,7 +49,7 @@ class CreateNginxSite extends Command
 
 		if ($this->saveConfig($site, $config)) {
 			// Ask if we should symlink if the config file was updated
-			if ($this->confirm('Do you want to enable this site?', true) && !Site::enable($domain)) {
+			if ($this->confirm('Do you want to enable this site?', true) && !$site->enable()) {
 				return 1;
 			}
 		}
@@ -75,7 +75,7 @@ class CreateNginxSite extends Command
 
 	public function saveConfig(Site $site, string $config): bool
 	{
-		if (File::exists($site->path) && !$this->confirm("File {$site->path} already exists. Do you want to overwrite it?")) {
+		if (File::exists($site->configFile) && !$this->confirm("File {$site->configFile} already exists. Do you want to overwrite it?")) {
 			$this->warn('Configuration NOT overwritten.');
 			return false;
 		}
