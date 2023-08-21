@@ -2,6 +2,8 @@
 
 namespace App\Commands\Nginx;
 
+use App\Classes\Site;
+use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Process\Process;
@@ -20,7 +22,7 @@ class EnableNginxSite extends Command
     {
         $domain = $this->argument('domain');
 
-        if ($this->activateSite($domain)) {
+        if (Site::enable($domain)) {
             $this->info('Site activated successfully!');
             return 0;
         } else {
@@ -28,36 +30,6 @@ class EnableNginxSite extends Command
             return 1;
         }
     }
-
-	protected function activateSite($domain)
-	{
-		$link = "/etc/nginx/sites-enabled/$domain";
-		$destFile = "/etc/nginx/sites-available/$domain";
-	
-		// Check if the symbolic link exists
-		if (file_exists($link)) {
-			// Check if the symbolic link points to the correct file
-			if (readlink($link) === $destFile) {
-				$this->info('Symbolic link already exists and is configured correctly.');
-				return true;
-			} else {
-				// Remove the existing symbolic link if it doesn't point to the correct file
-				unlink($link);
-			}
-		}
-	
-		// Create the symbolic link
-		$process = new Process(['sudo', 'ln', '-s', $destFile, $link]);
-		$process->run();
-	
-		if (!$process->isSuccessful()) {
-			$this->error('Failed to activate the site.');
-			return false;
-		}
-	
-		$this->info('Site activated successfully!');
-		return true;
-	}
 
     /**
      * Define the command's schedule.

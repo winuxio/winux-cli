@@ -2,6 +2,8 @@
 
 namespace App\Commands\Nginx;
 
+use App\Classes\Site;
+use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Process\Process;
@@ -14,25 +16,13 @@ class DisableNginxSite extends Command
 	public function handle(): mixed
 	{
 		$domain = $this->argument('domain');
-		$link = "/etc/nginx/sites-enabled/$domain";
-
-		// Check if the symbolic link exists
-		if (!file_exists($link)) {
-			$this->info("Symbolic link $link does not exist. Site is already disabled.");
+		if (Site::disable($domain)) {
+			$this->info('Site disabled successfully!');
 			return 0;
-		}
-
-		// Remove the symbolic link
-		$process = new Process(['sudo', 'rm', $link]);
-		$process->run();
-
-		if (!$process->isSuccessful()) {
+		} else {
 			$this->error('Failed to disable the site.');
 			return 1;
 		}
-
-		$this->info('Site disabled successfully!');
-		return 0;
 	}
 
 	/**

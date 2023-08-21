@@ -2,6 +2,7 @@
 
 namespace App\Commands\Nginx;
 
+use App\Classes\Site;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\File;
 use LaravelZero\Framework\Commands\Command;
@@ -34,23 +35,12 @@ class CreateNginxSite extends Command
 		$domain = $this->argument('domain');
 		$path = $this->argument('path');
 
-		$templatePath = storage_path('templates/site-template.conf');
-		$templateConfig = File::get($templatePath);
-		$config = str_replace(['{{PROJECT_DOMAIN}}', '{{PROJECT_PATH}}'], [$domain, $path], $templateConfig);
+		$site = Site::create($domain, $path);
+		$config = $site->generate();
+		// $this->line($config);
 
 		$this->info('Generated Nginx Configuration:');
-		// $this->line($config);
-		// Run a diff between the $templateConfig and the generated $config and display it to the user
-		$process = new Process(['diff', '--color=always', '--unified=1', $templatePath, '-'], null, null, $config);
-		$process->run();
-		$diffOutput = $process->getOutput();
-		$lines = explode("\n", $diffOutput);
-
-		// Skip the header lines, including the line starting with @@
-		$changes = array_slice($lines, 3);
-
-		// Combine the filtered lines back into a string
-		$finalOutput = implode("\n", $changes);
+		$finalOutput = Site::configDiff($config);
 		$this->line($finalOutput);
 
 		if (!$this->confirm('Do you want to save this configuration?', true)) {
@@ -59,9 +49,9 @@ class CreateNginxSite extends Command
 		}
 
 		$destFile = "/etc/nginx/sites-available/$domain";
-		if ($this->saveConfig($destFile, $config)) {
+		if ($this->saveConfig($site, $config)) {
 			// Ask if we should symlink if the config file was updated
-			if ($this->confirm('Do you want to enable this site?', true) && $this->call(EnableNginxSite::class, ['domain' => $domain]) !== 0) {
+			if ($this->confirm('Do you want to enable this site?', true) && !Site::enable($domain)) {
 				return 1;
 			}
 		}
@@ -85,17 +75,14 @@ class CreateNginxSite extends Command
 		// $schedule->command(static::class)->everyMinute();
 	}
 
-	public function saveConfig(string $path, string $config): bool
+	public function saveConfig(Site $site, string $config): bool
 	{
-		if (File::exists($path) && !$this->confirm("File $path already exists. Do you want to overwrite it?")) {
+		if (File::exists($site->path) && !$this->confirm("File {$site->path} already exists. Do you want to overwrite it?")) {
 			$this->warn('Configuration NOT overwritten.');
 			return false;
 		}
 
-		$process = new Process(['sudo', 'tee', $path], null, null, $config);
-		$process->run();
-
-		if (!$process->isSuccessful()) {
+		if (!$site->save($config)) {
 			$this->error('Failed to save the configuration. Permission denied.');
 			return false;
 		}

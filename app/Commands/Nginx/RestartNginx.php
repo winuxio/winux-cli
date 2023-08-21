@@ -2,6 +2,7 @@
 
 namespace App\Commands\Nginx;
 
+use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Process\Process;
@@ -18,10 +19,7 @@ class RestartNginx extends Command
      */
     public function handle()
     {
-        $process = new Process(['sudo', '/etc/init.d/nginx', 'restart']);
-        $process->run();
-
-        if (!$process->isSuccessful()) {
+        if (!Nginx::restart()) {
             $this->error('Failed to restart Nginx.');
             return Command::FAILURE;
         }
