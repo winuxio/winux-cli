@@ -37,7 +37,6 @@ class CreateNginxSite extends Command
 
 		$site = Site::create($domain, $path);
 		$config = $site->generate();
-		// $this->line($config);
 
 		$this->info('Generated Nginx Configuration:');
 		$finalOutput = Site::configDiff($config);
@@ -48,7 +47,6 @@ class CreateNginxSite extends Command
 			return 1;
 		}
 
-		$destFile = "/etc/nginx/sites-available/$domain";
 		if ($this->saveConfig($site, $config)) {
 			// Ask if we should symlink if the config file was updated
 			if ($this->confirm('Do you want to enable this site?', true) && !Site::enable($domain)) {
