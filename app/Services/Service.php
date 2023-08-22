@@ -20,6 +20,12 @@ abstract class Service
 
 	protected ?string $commandSuffix = null;
 
+	public static function make(): static
+	{
+		$service = new static();
+		return $service;
+	}
+
 	public function start(): bool
 	{
 		return self::init(__FUNCTION__);
@@ -42,10 +48,11 @@ abstract class Service
 			static::$initPath . (static::$serviceName ?? $this->serviceName()),
 			$command
 		];
-		info('Running command: ' . implode(' ', $commandParts));
+
 		if ($this->commandSuffix) {
 			$commandParts[] = $this->commandSuffix;
 		}
+		info('Running command: ' . implode(' ', $commandParts));
 		$process = new Process($commandParts);
 		$process->run();
 

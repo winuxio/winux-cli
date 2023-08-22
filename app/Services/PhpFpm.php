@@ -26,12 +26,6 @@ class PhpFpm extends Service
 		// dd($this->installedVersions);
 	}
 
-	public static function make(): self
-	{
-		$phpFpm = new static();
-		return $phpFpm;
-	}
-
 	public function checkVersions(): void
 	{
 		// Run this: find /etc/init.d -name 'php*fpm' -exec basename {} \;

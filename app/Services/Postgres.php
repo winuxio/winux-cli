@@ -21,17 +21,12 @@ class Postgres extends Service
 		$this->checkVersions();
 		// Set the version to the last installed version
 		$this->version = PostgresVersion::from(array_key_last($this->installedVersions));
+		$this->commandSuffix = $this->version->value;
 	}
 
 	protected function getPort(): int
 	{
 		return $this->installedVersions[$this->version->value];
-	}
-
-	public static function make(): self
-	{
-		$postgres = new static();
-		return $postgres;
 	}
 
 	public function createDatabase(string $databaseName): bool
