@@ -19,7 +19,8 @@ class RestartNginx extends Command
      */
     public function handle()
     {
-        if (!Nginx::restart()) {
+		$nginx = new Nginx();
+        if (!$nginx->restart()) {
             $this->error('Failed to restart Nginx.');
             return Command::FAILURE;
         }

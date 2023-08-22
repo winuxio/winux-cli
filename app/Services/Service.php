@@ -10,24 +10,30 @@ abstract class Service
 
 	protected static string $serviceName = '';
 
-	public static function start(): bool
+	protected ?string $commandSuffix = null;
+
+	public function start(): bool
 	{
-		return static::init(__FUNCTION__);
+		return self::init(__FUNCTION__);
 	}
 
-	public static function stop(): bool
+	public function stop(): bool
 	{
-		return static::init(__FUNCTION__);
+		return self::init(__FUNCTION__);
 	}
 
-	public static function restart(): bool
+	public function restart(): bool
 	{
-		return static::init(__FUNCTION__);
+		return self::init(__FUNCTION__);
 	}
 
-	protected static function init(string $command): bool
+	protected function init(string $command): bool
 	{
-		$process = new Process(['sudo', static::$initPath . static::$serviceName, $command]);
+		$commandParts = ['sudo', static::$initPath . static::$serviceName, $command];
+		if ($this->commandSuffix) {
+			$commandParts[] = $this->commandSuffix;
+		}
+		$process = new Process($commandParts);
 		$process->run();
 
 		return $process->isSuccessful();
