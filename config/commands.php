@@ -78,7 +78,7 @@ return [
     */
 
     'remove' => [
-        // ..
+		\App\Commands\LocalInstall::class,
     ],
 
 ];
