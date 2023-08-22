@@ -6,12 +6,13 @@ use App\Enums\Versions\PostgresVersion;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\warning;
 
 class Postgres extends Service
 {
 	protected static ?string $serviceName = 'postgresql';
 
-	protected int $port = 5432;
+	// public int $port = 5432;
 
 	protected array $installedVersions = [ ];
 	public PostgresVersion $version;
@@ -24,9 +25,36 @@ class Postgres extends Service
 		$this->commandSuffix = $this->version->value;
 	}
 
-	protected function getPort(): int
+	public function getPort(): int
 	{
 		return $this->installedVersions[$this->version->value];
+	}
+
+	public function createAll(string $dbName, ?string $username = null, ?string $password = null): bool
+	{
+		$username ??= $dbName;
+		$password ??= self::generatePassword();
+		return $this->createDatabase($dbName) && $this->createUser($username, $password) && $this->grant($dbName, $username);
+	}
+
+	public function dropAll(string $dbName, ?string $username = null): bool
+	{
+		$username ??= $dbName;
+		$success = true;
+		if (!$this->dropDatabase($dbName)) {
+			// error("Failed to drop database: $dbName");
+			$success = false;
+		}
+		if (!$this->dropUser($username)) {
+			// error("Failed to drop user: $username");
+			$success = false;
+		}
+		return $success;
+	}
+
+	public static function generatePassword(): string
+	{
+		return \Illuminate\Support\Str::password(16, true, true, false);
 	}
 
 	public function createDatabase(string $databaseName): bool
@@ -71,7 +99,7 @@ class Postgres extends Service
 		$process = Process::run(['sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(), '-c', $query]);
 
 		if ($process->failed()) {
-			error($process->errorOutput());
+			warning($process->errorOutput());
 			return false;
 		}
 

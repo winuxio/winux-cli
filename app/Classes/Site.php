@@ -71,11 +71,11 @@ class Site
 		$process = Process::run(['sudo', 'rm', $this->linkFile]);
 
 		if ($process->failed()) {
-			error('Failed to disable the site.');
+			error("Failed to disable the Nginx config for {$this->domain}.");
 			return false;
 		}
 
-		info('Site disabled successfully!');
+		info("Nginx config for {$this->domain} disabled successfully!");
 		return true;
 	}
 
@@ -99,10 +99,17 @@ class Site
 
 	public function delete(): bool
 	{
+		// Check if the config file exists
+		if (!file_exists($this->configFile)) {
+			info("Config file {$this->configFile} does not exist. Site is already deleted.");
+			return true;
+		}
+
 		$process = Process::run(['sudo', 'rm', $this->configFile]);
 
 		if ($process->failed()) {
-			error('Failed to delete the site: ' . $process->errorOutput());
+			alert('Failed to delete Nginx config for ' . $this->domain);
+			error($process->errorOutput());
 			return false;
 		}
 

@@ -6,7 +6,7 @@ use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\{alert, error, info};
 
 class CreateDatabase extends Command
 {
@@ -36,7 +36,6 @@ class CreateDatabase extends Command
 		$db_name = str_replace('-', '_', $db_name);
 		// Convert the db name to a valid database name, (only lowercase letters and underscores)
 		$db_name = preg_replace('/[^a-z0-9_]/', '', $db_name);
-		// dd($db_name);
 
 		$db_user = $db_name;
 		$db_pass = \Illuminate\Support\Str::password(16, true, true, false);
@@ -45,21 +44,21 @@ class CreateDatabase extends Command
 		info('Latest PostgreSQL version installed: ' . $postgres->version->value);
 
 		if (!$postgres->createDatabase($db_name)) {
-			error('Failed to create the database.');
+			alert("Failed to create the database: $db_name");
 			return 1;
 		}
 
 		info('Database created successfully!');
 
 		if (!$postgres->createUser($db_user, $db_pass)) {
-			error('Failed to create the user.');
+			alert("Failed to create the user: $db_user");
 			return 1;
 		}
 
 		info('User created successfully!');
 
 		if (!$postgres->grant($db_name, $db_user)) {
-			error('Failed to grant privileges to the user.');
+			alert("Failed to grant privileges on $db_name to $db_user");
 			return 1;
 		}
 

@@ -2,6 +2,9 @@
 
 namespace App\Commands\Projects;
 
+use App\Classes\Site;
+use App\Services\Nginx;
+use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -32,6 +35,7 @@ class DeleteProject extends Command
 	public function handle()
 	{
 		$projectName = $this->argument('projectName');
+		$domain = $projectName . '.localhost';
 		// $projectType = $this->option('type');
 
 		// Calculate the path of the new project
@@ -55,13 +59,31 @@ class DeleteProject extends Command
 		}
 
 		alert("Deleting project '$projectName' at '$projectDirectory'");
-
+		$site = Site::create($domain, $projectDirectory);
 
 		// Delete the NGINX site for this project
-		$this->call('nginx:delete', ['domain' => $projectName]);
+		// $this->call('nginx:delete', ['domain' => $projectName]);
+		$site->disable();
+		$site->delete();
+		Nginx::make()->restart();
 
 		// and then tear down the database and user
-		$this->call('postgres:delete', ['database' => $projectName]);
+		// $this->call('postgres:delete', ['database' => $projectName]);
+		$postgres = Postgres::make();
+		$dbName = $projectName;
+		// Convert hyphens to underscores
+		$dbName = str_replace('-', '_', $dbName);
+		// Convert the db name to a valid database name, (only lowercase letters and underscores)
+		$dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
+
+		if (!$postgres->dropAll($dbName)) {
+			alert('Failed to drop some database resources.');
+		} else {
+			info('Database resources dropped successfully!');
+		}
+
+		$this->title("$projectName deleted successfully!");
+		info('If you wish, you may now manually delete the project\'s directory.');
 	}
 
 	/**
