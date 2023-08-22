@@ -2,8 +2,11 @@
 
 namespace App\Commands\Postgres;
 
+use App\Enums\Versions\PostgresVersion;
+use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
+use Symfony\Component\Process\Process;
 
 class CreateDatabase extends Command
 {
@@ -32,21 +35,34 @@ class CreateDatabase extends Command
 		$db_user = $db_name;
 		$db_pass = \Illuminate\Support\Str::password(16, true, true, false);
 
-		$this->info("DB Values: $db_name, $db_user, $db_pass");
+		$postgres = Postgres::make();
+		$this->info('Latest PostgreSQL version installed: ' . $postgres->version->value);
 
-		/*
-			Need to effectively run this
+		if (!$postgres->createDatabase($db_name)) {
+			$this->error('Failed to create the database.');
+			return 1;
+		}
 
-			```sql
-			create database DBNAME;
-			create user DBUSER with encrypted password 'PASSWORD';
-			grant all privileges on database DBNAME to DBUSER;
-			```
+		$this->info('Database created successfully!');
 
-			** If we're on PostgreSQL15, we'll also need to run this:
-			
-			`GRANT ALL ON SCHEMA public TO DBUSER`
-		*/
+		if (!$postgres->createUser($db_user, $db_pass)) {
+			$this->error('Failed to create the user.');
+			return 1;
+		}
+
+		$this->info('User created successfully!');
+
+		if (!$postgres->grant($db_name, $db_user)) {
+			$this->error('Failed to grant privileges to the user.');
+			return 1;
+		}
+
+		$this->info('Privileges granted successfully!');
+
+		$this->newLine();
+		$this->info('Database: ' . $db_name . PHP_EOL . 'User: ' . $db_user . PHP_EOL . 'Password: ' . $db_pass);
+
+		return 0;
 	}
 
 	/**
