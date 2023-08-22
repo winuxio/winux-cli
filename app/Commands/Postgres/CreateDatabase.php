@@ -2,11 +2,11 @@
 
 namespace App\Commands\Postgres;
 
-use App\Enums\Versions\PostgresVersion;
 use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Process\Process;
+
+use function Laravel\Prompts\{error,info};
 
 class CreateDatabase extends Command
 {
@@ -42,31 +42,31 @@ class CreateDatabase extends Command
 		$db_pass = \Illuminate\Support\Str::password(16, true, true, false);
 
 		$postgres = Postgres::make();
-		$this->info('Latest PostgreSQL version installed: ' . $postgres->version->value);
+		info('Latest PostgreSQL version installed: ' . $postgres->version->value);
 
 		if (!$postgres->createDatabase($db_name)) {
-			$this->error('Failed to create the database.');
+			error('Failed to create the database.');
 			return 1;
 		}
 
-		$this->info('Database created successfully!');
+		info('Database created successfully!');
 
 		if (!$postgres->createUser($db_user, $db_pass)) {
-			$this->error('Failed to create the user.');
+			error('Failed to create the user.');
 			return 1;
 		}
 
-		$this->info('User created successfully!');
+		info('User created successfully!');
 
 		if (!$postgres->grant($db_name, $db_user)) {
-			$this->error('Failed to grant privileges to the user.');
+			error('Failed to grant privileges to the user.');
 			return 1;
 		}
 
-		$this->info('Privileges granted successfully!');
+		info('Privileges granted successfully!');
 
 		$this->newLine();
-		$this->info('Database: ' . $db_name . PHP_EOL . 'User: ' . $db_user . PHP_EOL . 'Password: ' . $db_pass);
+		info('Database: ' . $db_name . PHP_EOL . 'User: ' . $db_user . PHP_EOL . 'Password: ' . $db_pass);
 
 		return 0;
 	}

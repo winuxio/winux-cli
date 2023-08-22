@@ -3,15 +3,10 @@
 namespace App\Commands\Projects;
 
 use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Process\Exceptions\ProcessFailedException;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
-// use Symfony\Component\Process\Exception\ProcessFailedException;
-// use Symfony\Component\Process\Process;
 
-use function Laravel\Prompts\alert;
-use function Laravel\Prompts\error;
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\{alert, error, info};
 
 class CreateProject extends Command
 {

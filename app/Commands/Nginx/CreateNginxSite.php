@@ -7,13 +7,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\File;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\confirm;
-use function Laravel\Prompts\error;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\text;
-use function Laravel\Prompts\warning;
-
-use Symfony\Component\Process\Process;
+use function Laravel\Prompts\{confirm, error, info, text, warning};
 
 class CreateNginxSite extends Command
 {

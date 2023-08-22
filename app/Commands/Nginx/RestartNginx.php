@@ -5,7 +5,8 @@ namespace App\Commands\Nginx;
 use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Process\Process;
+
+use function Laravel\Prompts\{error,info};
 
 class RestartNginx extends Command
 {
@@ -21,11 +22,11 @@ class RestartNginx extends Command
     {
 		$nginx = new Nginx();
         if (!$nginx->restart()) {
-            $this->error('Failed to restart Nginx.');
+            error('Failed to restart Nginx.');
             return Command::FAILURE;
         }
 
-        $this->info('Nginx restarted successfully!');
+        info('Nginx restarted successfully!');
         return Command::SUCCESS;
     }
 

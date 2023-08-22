@@ -2,9 +2,9 @@
 
 namespace App\Services;
 
-use Symfony\Component\Process\Process;
+use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\{alert, error, info};
 
 abstract class Service
 {
@@ -53,9 +53,14 @@ abstract class Service
 			$commandParts[] = $this->commandSuffix;
 		}
 		info('Running command: ' . implode(' ', $commandParts));
-		$process = new Process($commandParts);
-		$process->run();
+		$process = Process::run($commandParts);
 
-		return $process->isSuccessful();
+		if ($process->failed()) {
+			alert('Failed to ' . $command . ' ' . $this->serviceName() . '.');
+			error($process->errorOutput());
+			return false;
+		}
+
+		return $process->successful();
 	}
 }

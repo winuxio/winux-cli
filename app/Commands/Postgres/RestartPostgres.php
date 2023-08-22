@@ -6,7 +6,8 @@ use App\Enums\Versions\PostgresVersion;
 use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Process\Process;
+
+use function Laravel\Prompts\{error,info};
 
 class RestartPostgres extends Command
 {
@@ -33,7 +34,7 @@ class RestartPostgres extends Command
     {
 		// $version = $this->option('db_version') ?: '13';
 		$version = PostgresVersion::v13;
-		$this->info("Restarting Postgres {$version->value}...");
+		info("Restarting Postgres {$version->value}...");
 		$postgres = new Postgres(PostgresVersion::v13);	
 		$postgres->restart();	
     }

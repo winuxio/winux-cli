@@ -3,10 +3,10 @@
 namespace App\Commands\Nginx;
 
 use App\Classes\Site;
-use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Process\Process;
+
+use function Laravel\Prompts\{error,info};
 
 class EnableNginxSite extends Command
 {
@@ -23,10 +23,10 @@ class EnableNginxSite extends Command
         $domain = $this->argument('domain');
 		
         if (Site::make($domain)->enable()) {
-            $this->info('Site activated successfully!');
+            info('Site activated successfully!');
             return 0;
         } else {
-            $this->error('Failed to activate the site.');
+            error('Failed to activate the site.');
             return 1;
         }
     }

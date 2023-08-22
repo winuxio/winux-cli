@@ -3,10 +3,8 @@
 namespace App\Commands\Nginx;
 
 use App\Classes\Site;
-use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
-use Symfony\Component\Process\Process;
 
 use function Laravel\Prompts\{error,info};
 

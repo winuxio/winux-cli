@@ -3,7 +3,7 @@
 namespace App\Services;
 
 use App\Enums\Versions\PostgresVersion;
-use Symfony\Component\Process\Process;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\error;
 
@@ -68,24 +68,22 @@ class Postgres extends Service
 
 	protected function query(string $query): bool
 	{
-		$process = new Process(['sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(), '-c', $query]);
-		$process->run();
+		$process = Process::run(['sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(), '-c', $query]);
 
-		if (!$process->isSuccessful()) {
-			error($process->getErrorOutput());
+		if ($process->failed()) {
+			error($process->errorOutput());
 			return false;
 		}
 
-		return $process->isSuccessful();
+		return $process->successful();
 	}
 
 	public function checkVersions(): void
 	{
 		// grep -H '^port' /etc/postgresql/*/main/postgresql.conf
 		// Run the above command via Symfony process
-		$process = Process::fromShellCommandline("grep -H '^port' /etc/postgresql/*/main/postgresql.conf");
-		$process->run();
-		$output = $process->getOutput();
+		$process = Process::run("grep -H '^port' /etc/postgresql/*/main/postgresql.conf");
+		$output = $process->output();
 		$lines = collect(explode("\n", trim($output)));
 
 		$lines->each(function ($line) {

@@ -6,6 +6,8 @@ use App\Services\PhpFpm;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\{error,info};
+
 class RestartPhpFpm extends Command
 {
     /**
@@ -31,11 +33,11 @@ class RestartPhpFpm extends Command
     {
         $php = new PhpFpm();
 		if (!$php->restart()) {
-			$this->error('Failed to restart PHP-FPM.');
+			error('Failed to restart PHP-FPM.');
 			return Command::FAILURE;
 		}
 
-		$this->info('PHP-FPM restarted successfully!');
+		info('PHP-FPM restarted successfully!');
 		return Command::SUCCESS;
     }
 

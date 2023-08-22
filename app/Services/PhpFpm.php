@@ -3,7 +3,9 @@
 namespace App\Services;
 
 use App\Enums\Versions\PhpVersion;
-use Symfony\Component\Process\Process;
+use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\{alert, error};
 
 class PhpFpm extends Service
 {
@@ -29,13 +31,14 @@ class PhpFpm extends Service
 	public function checkVersions(): void
 	{
 		// Run this: find /etc/init.d -name 'php*fpm' -exec basename {} \;
-		$process = Process::fromShellCommandline('find /etc/init.d -name \'php*fpm\' -exec basename {} \\;');
+		$process = Process::run('find /etc/init.d -name \'php*fpm\' -exec basename {} \\;');
 
-		$process->run();
-		if (!$process->isSuccessful()) {
-			throw new \Exception($process->getErrorOutput());
+		if ($process->failed()) {
+			alert('Failed to get installed PHP versions.');
+			error($process->errorOutput());
+			return;
 		}
-		$installedVersions = $process->getOutput();
+		$installedVersions = $process->output();
 		$installedVersions = explode("\n", $installedVersions);
 		$installedVersions = array_filter($installedVersions);
 		// dd($installedVersions);

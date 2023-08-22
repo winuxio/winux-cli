@@ -6,6 +6,8 @@ use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
+use function Laravel\Prompts\{error,info};
+
 class DropDatabase extends Command
 {
 	/**
@@ -39,15 +41,15 @@ class DropDatabase extends Command
 
 		$postgres = Postgres::make();
 		if (!$postgres->dropDatabase($db_name)) {
-			$this->error('Failed to drop the database.');
+			error('Failed to drop the database.');
 		} else {
-			$this->info('Database dropped successfully!');
+			info('Database dropped successfully!');
 		}
 
 		if (!$postgres->dropUser($db_user)) {
-			$this->error('Failed to drop the user.');
+			error('Failed to drop the user.');
 		} else {
-			$this->info('User dropped successfully!');
+			info('User dropped successfully!');
 		}
 
 		return 0;
