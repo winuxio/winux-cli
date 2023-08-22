@@ -39,10 +39,21 @@ class Postgres extends Service
 		return $this->query("CREATE DATABASE $databaseName");
 	}
 
+	public function dropDatabase(string $databaseName): bool
+	{
+		return $this->query("DROP DATABASE $databaseName");
+	}
+
 	public function createUser(string $username, string $password): bool
 	{
 		$query= "CREATE USER $username WITH ENCRYPTED PASSWORD '$password'";
 		return $this->query($query);	
+	}
+
+	public function dropUser(string $username): bool
+	{
+		$query = "DROP USER $username";
+		return $this->query($query);
 	}
 
 	public function grant(string $databaseName, string $username): bool
