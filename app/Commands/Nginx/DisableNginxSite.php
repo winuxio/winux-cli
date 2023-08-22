@@ -8,6 +8,8 @@ use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 use Symfony\Component\Process\Process;
 
+use function Laravel\Prompts\{error,info};
+
 class DisableNginxSite extends Command
 {
 	protected $signature = 'nginx:disable {domain}';
@@ -18,10 +20,10 @@ class DisableNginxSite extends Command
 		$domain = $this->argument('domain');
 
 		if (Site::make($domain)->disable()) {
-			$this->info('Site disabled successfully!');
+			info('Site disabled successfully!');
 			return 0;
 		} else {
-			$this->error('Failed to disable the site.');
+			error('Failed to disable the site.');
 			return 1;
 		}
 	}

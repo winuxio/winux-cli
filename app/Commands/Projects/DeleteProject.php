@@ -66,11 +66,10 @@ class DeleteProject extends Command
 
 
 		// Delete the NGINX site for this project
-		$this->call('nginx:disable', ['domain' => $projectName]);
 		$this->call('nginx:delete', ['domain' => $projectName]);
 
 		// and then tear down the database and user
-		$this->call('postgres:create', ['database' => $projectName]);		
+		$this->call('postgres:delete', ['database' => $projectName]);
 	}
 
 	/**

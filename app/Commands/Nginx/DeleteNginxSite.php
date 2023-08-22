@@ -35,6 +35,8 @@ class DeleteNginxSite extends Command
 		$domain = $this->argument('domain');
 		$site = Site::make($domain);
 
+		$this->call('nginx:disable', ['domain' => $domain]);
+
 		// Check if the site exists
 		if (!$site->delete()) {
 			error('Failed to delete the site.');

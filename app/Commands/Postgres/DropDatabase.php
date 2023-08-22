@@ -13,7 +13,7 @@ class DropDatabase extends Command
 	 *
 	 * @var string
 	 */
-	protected $signature = 'postgres:drop {database}';
+	protected $signature = 'postgres:delete {database}';
 
 	/**
 	 * The description of the command.
@@ -30,6 +30,11 @@ class DropDatabase extends Command
 	public function handle()
 	{
 		$db_name = $this->argument('database');
+		// Convert hyphens to underscores
+		$db_name = str_replace('-', '_', $db_name);
+		// Convert the db name to a valid database name, (only lowercase letters and underscores)
+		$db_name = preg_replace('/[^a-z0-9_]/', '', $db_name);
+		// dd($db_name);
 		$db_user = $db_name;
 
 		$postgres = Postgres::make();

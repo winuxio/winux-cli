@@ -32,6 +32,12 @@ class CreateDatabase extends Command
 	public function handle()
 	{
 		$db_name = $this->argument('database');
+		// Convert hyphens to underscores
+		$db_name = str_replace('-', '_', $db_name);
+		// Convert the db name to a valid database name, (only lowercase letters and underscores)
+		$db_name = preg_replace('/[^a-z0-9_]/', '', $db_name);
+		// dd($db_name);
+
 		$db_user = $db_name;
 		$db_pass = \Illuminate\Support\Str::password(16, true, true, false);
 

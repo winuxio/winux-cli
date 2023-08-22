@@ -101,6 +101,11 @@ class Site
 	{
 		$process = Process::run(['sudo', 'rm', $this->configFile]);
 
+		if ($process->failed()) {
+			error('Failed to delete the site: ' . $process->errorOutput());
+			return false;
+		}
+
 		return $process->successful();
 	}
 
