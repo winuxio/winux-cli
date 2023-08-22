@@ -5,7 +5,7 @@ namespace App\Classes;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\{error, info, warning, alert};
+use function Laravel\Prompts\{error, info, warning, alert, note};
 
 class Site
 {
@@ -92,7 +92,10 @@ class Site
 
 	public function save(string $config): bool
 	{
-		$process = Process::run(['sudo', 'tee', $this->configFile], null, null, $config);
+		note('Saving configuration to ' . $this->configFile);
+		// dump($config);
+	
+		$process = Process::input($config)->run(['sudo', 'tee', $this->configFile]);
 
 		return $process->successful();
 	}

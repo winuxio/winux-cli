@@ -80,6 +80,8 @@ class CreateNginxSite extends Command
 			return false;
 		}
 
+		// dump('Saving configuration (saveConfig)...');
+		// dump($config);
 		if (!$site->save($config)) {
 			error('Failed to save the configuration. Permission denied.');
 			return false;
