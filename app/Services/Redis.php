@@ -4,6 +4,6 @@ namespace App\Services;
 
 class Redis extends Service
 {
-	protected static string $serviceName = 'redis-server';
+	protected static ?string $serviceName = 'redis-server';
 
 }

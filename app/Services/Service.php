@@ -4,11 +4,19 @@ namespace App\Services;
 
 use Symfony\Component\Process\Process;
 
+use function Laravel\Prompts\info;
+
 abstract class Service
 {
 	protected static string $initPath = '/etc/init.d/';
 
-	protected static string $serviceName = '';
+	// Meant to be overridden
+	protected function serviceName(): string
+	{
+		return static::$serviceName;
+	}
+
+	protected static ?string $serviceName = null;
 
 	protected ?string $commandSuffix = null;
 
@@ -29,7 +37,12 @@ abstract class Service
 
 	protected function init(string $command): bool
 	{
-		$commandParts = ['sudo', static::$initPath . static::$serviceName, $command];
+		$commandParts = [
+			'sudo',
+			static::$initPath . (static::$serviceName ?? $this->serviceName()),
+			$command
+		];
+		info('Running command: ' . implode(' ', $commandParts));
 		if ($this->commandSuffix) {
 			$commandParts[] = $this->commandSuffix;
 		}

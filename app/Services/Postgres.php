@@ -9,7 +9,7 @@ use function Laravel\Prompts\error;
 
 class Postgres extends Service
 {
-	protected static string $serviceName = 'postgresql';
+	protected static ?string $serviceName = 'postgresql';
 
 	protected int $port = 5432;
 
