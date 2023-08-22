@@ -6,7 +6,13 @@ use App\Classes\Site;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\File;
 use LaravelZero\Framework\Commands\Command;
+
+use function Laravel\Prompts\confirm;
+use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
 use function Laravel\Prompts\text;
+use function Laravel\Prompts\warning;
+
 use Symfony\Component\Process\Process;
 
 class CreateNginxSite extends Command
@@ -38,24 +44,24 @@ class CreateNginxSite extends Command
 		$site = Site::create($domain, $path);
 		$config = $site->generate();
 
-		$this->info('Generated Nginx Configuration:');
+		info('Generated Nginx Configuration:');
 		$finalOutput = Site::configDiff($config);
 		$this->line($finalOutput);
 
-		if (!$this->confirm('Do you want to save this configuration?', true)) {
-			$this->warn('Configuration not saved.');
+		if (!confirm('Do you want to save this configuration?', true)) {
+			warning('Configuration not saved.');
 			return 1;
 		}
 
 		if ($this->saveConfig($site, $config)) {
 			// Ask if we should symlink if the config file was updated
-			if ($this->confirm('Do you want to enable this site?', true) && !$site->enable()) {
+			if (confirm('Do you want to enable this site?', true) && !$site->enable()) {
 				return 1;
 			}
 		}
 
 		// Restart Nginx
-		if ($this->confirm('Do you want to restart Nginx?', true) && $this->call(RestartNginx::class) !== 0) {
+		if (confirm('Do you want to restart Nginx?', true) && $this->call(RestartNginx::class) !== 0) {
 			return 1;
 		}
 
@@ -75,17 +81,17 @@ class CreateNginxSite extends Command
 
 	public function saveConfig(Site $site, string $config): bool
 	{
-		if (File::exists($site->configFile) && !$this->confirm("File {$site->configFile} already exists. Do you want to overwrite it?")) {
-			$this->warn('Configuration NOT overwritten.');
+		if (File::exists($site->configFile) && !confirm("File {$site->configFile} already exists. Do you want to overwrite it?")) {
+			warning('Configuration NOT overwritten.');
 			return false;
 		}
 
 		if (!$site->save($config)) {
-			$this->error('Failed to save the configuration. Permission denied.');
+			error('Failed to save the configuration. Permission denied.');
 			return false;
 		}
 
-		$this->info('Configuration saved successfully!');
+		info('Configuration saved successfully!');
 		return true;
 	}
 }
