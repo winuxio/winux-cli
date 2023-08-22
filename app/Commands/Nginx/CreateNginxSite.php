@@ -55,7 +55,7 @@ class CreateNginxSite extends Command
 
 		if ($this->saveConfig($site, $config)) {
 			// Ask if we should symlink if the config file was updated
-			if (confirm('Do you want to enable this site?', true) && !$site->enable()) {
+			if (confirm('Do you want to enable this site?', true, hint: 'This will create a symlink in sites-enabled.') && !$site->enable()) {
 				return 1;
 			}
 		}

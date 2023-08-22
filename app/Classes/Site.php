@@ -3,7 +3,9 @@
 namespace App\Classes;
 
 use Illuminate\Support\Facades\File;
-use Symfony\Component\Process\Process;
+use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\{error, info, warning, alert};
 
 class Site
 {
@@ -37,7 +39,7 @@ class Site
 		if (file_exists($this->linkFile)) {
 			// Check if the symbolic link points to the correct file
 			if (readlink($this->linkFile) === $this->configFile) {
-				// $this->info('Symbolic link already exists and is configured correctly.');
+				info('Symbolic link already exists and is configured correctly.');
 				return true;
 			} else {
 				// Remove the existing symbolic link if it doesn't point to the correct file
@@ -46,15 +48,14 @@ class Site
 		}
 
 		// Create the symbolic link
-		$process = new Process(['sudo', 'ln', '-s', $this->configFile, $this->linkFile]);
-		$process->run();
+		$process = Process::run(['sudo', 'ln', '-s', $this->configFile, $this->linkFile]);
 
-		if (!$process->isSuccessful()) {
-			// $this->error('Failed to activate the site.');
+		if ($process->failed()) {
+			error('Failed to activate the site.');
 			return false;
 		}
 
-		// $this->info('Site activated successfully!');
+		info('Site activated successfully!');
 		return true;
 	}
 
@@ -62,20 +63,19 @@ class Site
 	{
 		// Check if the symbolic link exists
 		if (!file_exists($this->linkFile)) {
-			// $this->info("Symbolic link $link does not exist. Site is already disabled.");
+			info("Symbolic link {$this->linkFile} does not exist. Site is already disabled.");
 			return true;
 		}
 
 		// Remove the symbolic link
-		$process = new Process(['sudo', 'rm', $this->linkFile]);
-		$process->run();
+		$process = Process::run(['sudo', 'rm', $this->linkFile]);
 
-		if (!$process->isSuccessful()) {
-			// $this->error('Failed to disable the site.');
+		if ($process->failed()) {
+			error('Failed to disable the site.');
 			return false;
 		}
 
-		// $this->info('Site disabled successfully!');
+		info('Site disabled successfully!');
 		return true;
 	}
 
@@ -92,10 +92,16 @@ class Site
 
 	public function save(string $config): bool
 	{
-		$process = new Process(['sudo', 'tee', $this->configFile], null, null, $config);
-		$process->run();
+		$process = Process::run(['sudo', 'tee', $this->configFile], null, null, $config);
 
-		return $process->isSuccessful();
+		return $process->successful();
+	}
+
+	public function delete(): bool
+	{
+		$process = Process::run(['sudo', 'rm', $this->configFile]);
+
+		return $process->successful();
 	}
 
 	private static function templatePath(): string
@@ -125,11 +131,11 @@ class Site
 		$path2 = stream_get_meta_data($pipe2)['uri'];
 
 		// Run a diff between the $templateConfig and the generated $config and display it to the user
-		$process = new Process([
+		$process = Process::run([
 			'diff', '--color=always', '--unified=1', $path1, $path2
 		]);
-		$process->run();
-		$diffOutput = $process->getOutput();
+
+		$diffOutput = $process->output();
 
 		// Close the Named Pipes
 		fclose($pipe1);

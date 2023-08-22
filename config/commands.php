@@ -64,6 +64,7 @@ return [
         Illuminate\Foundation\Console\VendorPublishCommand::class,
         LaravelZero\Framework\Commands\StubPublishCommand::class,
 		\App\Commands\InspireCommand::class,
+		\App\Commands\LocalInstall::class,
     ],
 
     /*
@@ -78,7 +79,7 @@ return [
     */
 
     'remove' => [
-		\App\Commands\LocalInstall::class,
+		// 
     ],
 
 ];
