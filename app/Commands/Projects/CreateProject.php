@@ -3,6 +3,7 @@
 namespace App\Commands\Projects;
 
 use App\Classes\Site;
+use App\Classes\Winux;
 use App\Services\Nginx;
 use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
@@ -36,6 +37,9 @@ class CreateProject extends Command
 	{
 		$projectName = $this->argument('projectName');
 		// $projectType = $this->option('type');
+
+		Winux::SetupEnvironment();
+		die('done');
 
 		// Ensure the project name is linux directory name friendly
 		$projectName = preg_replace('/[^a-zA-Z0-9-_\.]/', '', $projectName);

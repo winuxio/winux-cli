@@ -2,6 +2,7 @@
 
 namespace App\Classes;
 
+use App\Services\Nginx;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -9,16 +10,16 @@ use function Laravel\Prompts\{error, info, warning, alert, note};
 
 class Site
 {
-	protected static string $configPath = '/etc/nginx/sites-available';
-	protected static string $linkPath = '/etc/nginx/sites-enabled';
+	// protected static string $configPath = '/etc/nginx/sites-available';
+	// protected static string $linkPath = '/etc/nginx/sites-enabled';
 
 	public string $configFile = '';
 	public string $linkFile = '';
 
 	public function __construct(public string $domain, public ?string $path = null)
 	{
-		$this->configFile = static::$configPath . "/$domain";
-		$this->linkFile = static::$linkPath . "/$domain";
+		$this->configFile = Nginx::availablePath() . "/$domain";
+		$this->linkFile = Nginx::enabledPath() . "/$domain";
 	}
 
 	public static function create(string $domain, string $path): static
@@ -48,7 +49,7 @@ class Site
 		}
 
 		// Create the symbolic link
-		$process = Process::run(['sudo', 'ln', '-s', $this->configFile, $this->linkFile]);
+		$process = Process::run(['ln', '-s', $this->configFile, $this->linkFile]);
 
 		if ($process->failed()) {
 			error('Failed to activate the site.');
@@ -95,9 +96,14 @@ class Site
 		note('Saving configuration to ' . $this->configFile);
 		// dump($config);
 	
-		$process = Process::input($config)->run(['sudo', 'tee', $this->configFile]);
+		// $process = Process::input($config)->run(['sudo', 'tee', $this->configFile]);
+		if (!file_put_contents($this->configFile, $config)) {
+			error('Failed to save the Nginx config.');
+			return false;
+		}
+		return true;
 
-		return $process->successful();
+		// return $process->successful();
 	}
 
 	public function delete(): bool
