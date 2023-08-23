@@ -10,7 +10,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, error, info};
+use function Laravel\Prompts\{alert, confirm, error, info};
 
 class CreateProject extends Command
 {
@@ -39,7 +39,6 @@ class CreateProject extends Command
 		// $projectType = $this->option('type');
 
 		Winux::SetupEnvironment();
-		die('done');
 
 		// Ensure the project name is linux directory name friendly
 		$projectName = preg_replace('/[^a-zA-Z0-9-_\.]/', '', $projectName);
@@ -131,6 +130,13 @@ class CreateProject extends Command
 
 		info('Switch into the new project directory with `cd ' . $projectName . '`');
 		info("$projectName should now be live at http://$domain");
+		if (confirm('Do you want to open the project in VS Code?', true)) {
+			$this->openProject($projectDirectory);
+		}
+
+		Process::run(['explorer.exe', 'http://' . $domain]);
+
+		return 0;
 	}
 
 	/**
@@ -142,6 +148,17 @@ class CreateProject extends Command
 	public function schedule(Schedule $schedule): void
 	{
 		// $schedule->command(static::class)->everyMinute();
+	}
+
+	public function openProject(string $projectDirectory): bool
+	{
+		// TODO - Support PHPStorm
+		$process = Process::run(['code', $projectDirectory]);
+		if ($process->failed()) {
+			error('Failed to open the project in VS Code.');
+			return false;
+		}
+		return true;
 	}
 
 	public function createLaravel(string $projectName): bool
