@@ -23,7 +23,7 @@ class DeleteNginxSite extends Command
 	 *
 	 * @var string
 	 */
-	protected $description = 'Delete an Nginx site by removing the configuration file in sites-available and the symbolic link in sites-enabled';
+	protected $description = 'Delete an Nginx site config for a given domain (filename)';
 
 	/**
 	 * Execute the console command.

@@ -126,6 +126,7 @@ class CreateProject extends Command
 		$this->title('Project created successfully!');
 
 		info('Switch into the new project directory with `cd ' . $projectName . '`');
+		info("$projectName should now be live at http://$domain");
 	}
 
 	/**
