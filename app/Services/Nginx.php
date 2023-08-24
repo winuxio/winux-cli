@@ -28,6 +28,33 @@ class Nginx extends Service
 		]);
 	}
 
+	public static function RootCAPath(): string
+	{
+		return join(DIRECTORY_SEPARATOR, [
+			config('winux.paths.base'),
+			'ssl',
+			'root'
+		]);
+	}
+
+	public static function KeyPath(): string
+	{
+		return join(DIRECTORY_SEPARATOR, [
+			config('winux.paths.base'),
+			'ssl',
+			'keys'
+		]);
+	}
+
+	public static function CertPath(): string
+	{
+		return join(DIRECTORY_SEPARATOR, [
+			config('winux.paths.base'),
+			'ssl',
+			'certs'
+		]);
+	}
+
 	public static function patchConfig(): bool
 	{
 		$nginxConfig = config('winux.nginx.config');

@@ -2,6 +2,8 @@
 
 namespace App\Commands\Projects;
 
+use App\Classes\Certificate;
+use App\Classes\OpenSSL;
 use App\Classes\Site;
 use App\Classes\Winux;
 use App\Services\Nginx;
@@ -72,6 +74,11 @@ class CreateProject extends Command
 		// Enable it in sites-enabled
 		info('Enabling Nginx site...');
 		$site->enable();
+		
+		// Setup SSL
+		OpenSSL::init();
+		Certificate::create($domain);
+
 		// Restart nginx
 		info('Restarting Nginx...');
 		Nginx::make()->restart();
@@ -101,7 +108,7 @@ class CreateProject extends Command
 		// Define the new values
 		$newValues = [
 			'APP_NAME' => "\"$projectName\"",
-			'APP_URL' => '"http://' . $domain . '"',
+			'APP_URL' => '"https://' . $domain . '"',
 			'CACHE_DRIVER' => 'redis',
 			'SESSION_DRIVER' => 'redis',
 			'QUEUE_CONNECTION' => 'redis',
@@ -134,7 +141,7 @@ class CreateProject extends Command
 			$this->openProject($projectDirectory);
 		}
 
-		Process::run(['explorer.exe', 'http://' . $domain]);
+		Process::run(['explorer.exe', 'https://' . $domain]);
 
 		return 0;
 	}

@@ -84,8 +84,8 @@ class Site
 	{
 		$configTemplate = static::templateData();
 		$config = str_replace(
-			['{{PROJECT_DOMAIN}}', '{{PROJECT_PATH}}'],
-			[$this->domain, $this->path],
+			['{{PROJECT_DOMAIN}}', '{{PROJECT_PATH}}', '{{SSL_CERT_PATH}}'],
+			[$this->domain, $this->path, Nginx::CertPath()],
 			$configTemplate
 		);
 		return $config;

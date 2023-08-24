@@ -7,11 +7,7 @@ use Illuminate\Process\Exceptions\ProcessFailedException;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\alert;
-use function Laravel\Prompts\error;
-use function Laravel\Prompts\info;
-use function Laravel\Prompts\note;
-use function Laravel\Prompts\text;
+use function Laravel\Prompts\{error, info, warning, alert, note, text};
 
 class LocalInstall extends Command
 {

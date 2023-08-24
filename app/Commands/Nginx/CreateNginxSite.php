@@ -2,6 +2,8 @@
 
 namespace App\Commands\Nginx;
 
+use App\Classes\Certificate;
+use App\Classes\OpenSSL;
 use App\Classes\Site;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\File;
@@ -35,6 +37,13 @@ class CreateNginxSite extends Command
 		$domain = $this->argument('domain');
 		$path = $this->argument('path');
 
+		// Temp check to make sure Root CA generation works
+		OpenSSL::init();
+		// OpenSSL::generateRootAuthority();
+		
+		// info('Root CA generated successfully!');
+		// return 0;
+
 		$site = Site::create($domain, $path);
 		$config = $site->generate();
 
@@ -53,6 +62,8 @@ class CreateNginxSite extends Command
 				return 1;
 			}
 		}
+
+		Certificate::create($domain);
 
 		// Restart Nginx
 		if (confirm('Do you want to restart Nginx?', true) && $this->call(RestartNginx::class) !== 0) {
