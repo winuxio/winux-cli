@@ -3,6 +3,7 @@
 namespace App\Commands\Projects;
 
 use App\Classes\Certificate;
+use App\Classes\Project;
 use App\Classes\Site;
 use App\Services\Nginx;
 use App\Services\Postgres;
@@ -36,57 +37,31 @@ class DeleteProject extends Command
 	public function handle()
 	{
 		$projectName = $this->argument('projectName');
-		$domain = $projectName . '.localhost';
-		// $projectType = $this->option('type');
 
-		// Calculate the path of the new project
-		$projectDirectory = getcwd() . '/' . $projectName;
+		$project = Project::create($projectName);
+		info("Preparing to delete {$project->name} at {$project->path}");
 
-		info("Preparing to delete $projectName at $projectDirectory");
-
-		if (!is_dir($projectDirectory)) {
-			error("Project '$projectName' does not exist.");
-			return 1;
+		if (!is_dir($project->path)) {
+			error("Project '{$project->name}' does not exist.");
+			return Command::FAILURE;
 		}
 
 		if (!confirm("Are you sure you want to delete project '$projectName' at '$projectDirectory'?")) {
 			warning('Project not deleted.');
-			return 1;
+			return Command::FAILURE;
 		}
 
-		if ($projectName !== text("If you're absolutely sure you want to delete this project, type '$projectName' below.", placeholder: $projectName)) {
-			warning('Project not deleted.');
-			return 1;
+		$confirmationEntry = text("If you're absolutely sure you want to delete this project, type '{$project->name}' below.", placeholder: $projectName);
+		if ($project->name !== $confirmationEntry) {
+			warning('Names did not match. Project NOT deleted.');
+			return Command::FAILURE;
 		}
 
-		alert("Deleting project '$projectName' at '$projectDirectory'");
-		$site = Site::create($domain, $projectDirectory);
-
-		// Delete the NGINX site for this project
-		// $this->call('nginx:delete', ['domain' => $projectName]);
-		$site->disable();
-		$site->delete();
-		Nginx::make()->restart();
-
-		Certificate::destroy($domain);
-
-		// and then tear down the database and user
-		// $this->call('postgres:delete', ['database' => $projectName]);
-		$postgres = Postgres::make();
-		$dbName = $projectName;
-		// Convert hyphens to underscores
-		$dbName = str_replace('-', '_', $dbName);
-		// Convert the db name to a valid database name, (only lowercase letters and underscores)
-		$dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
-
-		if (!$postgres->dropAll($dbName)) {
-			alert('Failed to drop some database resources.');
-		} else {
-			info('Database resources dropped successfully!');
-		}
+		warning("Deleting project '{$project->name}' at '{$project->path}'");
+		// WARNING: This is a VERY destructive operation!
+		$project->destroy();
 
 		$this->title("$projectName deleted successfully!");
-		info('If you wish, you may now manually delete the project\'s directory.');
 	}
 
 	/**

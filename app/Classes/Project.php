@@ -6,9 +6,11 @@ use App\Enums\Editors;
 use App\Enums\Frameworks;
 use App\Services\Nginx;
 use App\Services\Postgres;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\alert;
+use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\note;
 
@@ -36,14 +38,23 @@ class Project
 		$project = new Project();
 		$project->name = preg_replace('/[^a-zA-Z0-9-_\.]/', '', $name);
 		$project->path = getcwd() . '/' . $name;
+
+		// Site
+		$project->site = Site::create($project->getDomain(), $project->path);
+
+		// Database
+		$dbName = $project->name;
+		// Convert hyphens to underscores
+		$dbName = str_replace('-', '_', $dbName);
+		// Convert the db name to a valid database name, (only lowercase letters and underscores)
+		$project->dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
+
 		return $project;
 	}
 
 	#region Meta-Methods
 	public function setupNginx(): bool
 	{
-		$this->site = Site::create($this->getDomain(), $this->path);
-
 		return $this->site->generateAndSave()
 			&& $this->site->enable()
 			&& OpenSSL::init()
@@ -53,19 +64,8 @@ class Project
 
 	public function setupDatabase(): bool
 	{
-		// and then setup the database for it
-		$postgres = Postgres::make();
-		// $this->call('postgres:create', ['database' => $projectName]);
-		$this->dbName = $this->name;
-		// Convert hyphens to underscores
-		$this->dbName = str_replace('-', '_', $this->dbName);
-		// Convert the db name to a valid database name, (only lowercase letters and underscores)
-		$this->dbName = preg_replace('/[^a-z0-9_]/', '', $this->dbName);
 		$this->dbPassword = Postgres::generatePassword();
-		if (!$postgres->createAll($this->dbName, password: $this->dbPassword)) {
-			return false;
-		}
-		return true;
+		return Postgres::make()->createAll($this->dbName, password: $this->dbPassword);
 	}
 
 	public function setupEnv()
@@ -97,6 +97,45 @@ class Project
 
 		// Write the updated content back to the .env file
 		file_put_contents($envFile, $currentEnvContent);
+	}
+
+	public function destroy(): bool
+	{
+		// Delete the NGINX site for this project
+		// $this->call('nginx:delete', ['domain' => $projectName]);
+		$this->site->disable();
+		$this->site->delete();
+		Nginx::make()->restart();
+
+		Certificate::destroy($this->getDomain());
+
+		// and then tear down the database and user
+		// $this->call('postgres:delete', ['database' => $projectName]);
+		$postgres = Postgres::make();
+		$dbName = $this->name;
+		// Convert hyphens to underscores
+		$dbName = str_replace('-', '_', $dbName);
+		// Convert the db name to a valid database name, (only lowercase letters and underscores)
+		$dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
+		if (!$postgres->dropAll($dbName)) {
+			alert('Failed to drop some (or all) database resources.');
+			return false;
+		}
+
+		info("Dropped all database resources.\n");
+
+		// Delete the project directory
+		alert("Answering 'yes' will delete ALL of this project's files. THIS CAN NOT BE UNDONE!");
+		if (confirm("Do you want to delete the project directory at '{$this->path}'?", false)) {
+			if (!File::deleteDirectory($this->path)) {
+				error('Failed to delete the project directory.');
+				return false;
+			}
+
+			info('Deleted the project directory.');
+		}
+
+		return true;
 	}
 	#endregion
 
@@ -165,4 +204,9 @@ class Project
 		return true;
 	}
 	#endregion
+
+	#region Helpers
+
+	#endregion
+
 }
