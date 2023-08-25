@@ -26,6 +26,8 @@ class Certificate
 			}
 			info('Deleted the cert directory for the domain: ' . $domain);
 		}
+		
+		return true;
 	}
 
 	public static function create(string $domain): bool

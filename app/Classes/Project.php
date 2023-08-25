@@ -13,6 +13,7 @@ use function Laravel\Prompts\alert;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\note;
+use function Laravel\Prompts\warning;
 
 class Project
 {
@@ -68,7 +69,7 @@ class Project
 		return Postgres::make()->createAll($this->dbName, password: $this->dbPassword);
 	}
 
-	public function setupEnv()
+	public function setupEnv(): bool
 	{
 		$newValues = [
 			'APP_NAME' => "\"$this->name\"",
@@ -96,7 +97,7 @@ class Project
 		}
 
 		// Write the updated content back to the .env file
-		file_put_contents($envFile, $currentEnvContent);
+		return file_put_contents($envFile, $currentEnvContent) ? true : false;
 	}
 
 	public function destroy(): bool
@@ -152,11 +153,14 @@ class Project
 
 	public function openBrowser(): bool
 	{
+		note('Attempting to open the project in the browser...');
 		$process = Process::run(['explorer.exe', 'https://' . $this->getDomain()]);
 		if ($process->failed()) {
-			error('Failed to open the project in the browser.');
+			warning('It appears this might have failed.');
+			error($process->output());
 			return false;
 		}
+
 		return true;
 	}
 	#endregion
@@ -189,7 +193,7 @@ class Project
 		$process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
 			if ($type === 'out') {
 				// $this->line($buffer);
-				note(trim($buffer));
+				echo($buffer);
 			} else if ($type === 'err') {
 				error($buffer);
 				return false;
