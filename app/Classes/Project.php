@@ -189,7 +189,7 @@ class Project
 		$process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
 			if ($type === 'out') {
 				// $this->line($buffer);
-				note($buffer);
+				note(trim($buffer));
 			} else if ($type === 'err') {
 				error($buffer);
 				return false;

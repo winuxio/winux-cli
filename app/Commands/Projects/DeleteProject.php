@@ -46,7 +46,7 @@ class DeleteProject extends Command
 			return Command::FAILURE;
 		}
 
-		if (!confirm("Are you sure you want to delete project '$projectName' at '$projectDirectory'?")) {
+		if (!confirm("Are you sure you want to delete project '{$project->name}' at '{$project->path}'?")) {
 			warning('Project not deleted.');
 			return Command::FAILURE;
 		}
