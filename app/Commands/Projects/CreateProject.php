@@ -61,6 +61,8 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
+		Nginx::make()->reload();
+
 		if (!$project->setupDatabase()) {
 			alert('Failed to create all required postgres resources.');
 			return Command::FAILURE;

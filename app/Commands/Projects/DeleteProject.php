@@ -61,6 +61,8 @@ class DeleteProject extends Command
 		// WARNING: This is a VERY destructive operation!
 		$project->destroy();
 
+		Nginx::make()->reload();
+
 		$this->title("$projectName deleted successfully!");
 	}
 

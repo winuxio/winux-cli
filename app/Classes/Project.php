@@ -59,8 +59,7 @@ class Project
 		return $this->site->generateAndSave()
 			&& $this->site->enable()
 			&& OpenSSL::init()
-			&& Certificate::create($this->getDomain())
-			&& Nginx::make()->restart();
+			&& Certificate::create($this->getDomain());
 	}
 
 	public function setupDatabase(): bool
