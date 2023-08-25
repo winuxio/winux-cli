@@ -80,6 +80,12 @@ class Site
 		return true;
 	}
 
+	public function generateAndSave(): bool
+	{
+		$config = $this->generate();
+		return $this->save($config);
+	}
+
 	public function generate(): string
 	{
 		$configTemplate = static::templateData();
