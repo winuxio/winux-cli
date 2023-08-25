@@ -2,6 +2,7 @@
 
 namespace App\Commands\Nginx;
 
+use App\Classes\Certificate;
 use App\Classes\Site;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
@@ -42,6 +43,8 @@ class DeleteNginxSite extends Command
 			error('Failed to delete the site.');
 			return 1;
 		}
+
+		Certificate::destroy($domain);
 
 		info('Site deleted successfully!');
 		return 0;

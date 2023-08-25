@@ -10,9 +10,27 @@ use function Laravel\Prompts\{alert, error, info};
 
 class Certificate
 {
+	public static function path(string $domain): string
+	{
+		return join(DIRECTORY_SEPARATOR, [Nginx::CertPath(), $domain]);
+	}
+
+	public static function destroy(string $domain): bool
+	{
+		// Delete the certificate directory for this domain
+		$certPath = self::path($domain);
+		if (is_dir($certPath)) {
+			if (!File::deleteDirectory($certPath)) {
+				error('Failed to delete the cert directory for the domain: ' . $domain);
+				return false;
+			}
+			info('Deleted the cert directory for the domain: ' . $domain);
+		}
+	}
+
 	public static function create(string $domain): bool
 	{
-		$certPath = Nginx::CertPath() . DIRECTORY_SEPARATOR . $domain;
+		$certPath = self::path($domain);
 		// $keyPath = Nginx::KeyPath();
 
 		// Ensure that the cert path exists

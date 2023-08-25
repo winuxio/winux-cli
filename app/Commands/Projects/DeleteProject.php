@@ -2,6 +2,7 @@
 
 namespace App\Commands\Projects;
 
+use App\Classes\Certificate;
 use App\Classes\Site;
 use App\Services\Nginx;
 use App\Services\Postgres;
@@ -67,6 +68,8 @@ class DeleteProject extends Command
 		$site->delete();
 		Nginx::make()->restart();
 
+		Certificate::destroy($domain);
+
 		// and then tear down the database and user
 		// $this->call('postgres:delete', ['database' => $projectName]);
 		$postgres = Postgres::make();
@@ -95,36 +98,5 @@ class DeleteProject extends Command
 	public function schedule(Schedule $schedule): void
 	{
 		// $schedule->command(static::class)->everyMinute();
-	}
-
-	public function createLaravel(string $projectName): bool
-	{
-		// Ensure the laravel installer is installed.
-		// Check if the laravel installer is installed.
-		$process = Process::run(['laravel', '--version']);
-		if ($process->failed()) {
-			$process = Process::run(['composer', 'global', 'require', 'laravel/installer']);
-			if ($process->failed()) {
-				error('Failed to install the laravel installer.');
-				return false;
-			}
-		}
-
-		$process = Process::run(['laravel', 'new', $projectName], function ($type, $buffer) {
-			if ($type === 'out') {
-				// $this->line($buffer);
-				$this->output->write($buffer);
-			} else if ($type === 'err') {
-				error($buffer);
-				return false;
-			}
-		});
-
-		if ($process->failed()) {
-			error('Failed to create the laravel project.');
-			return false;
-		}
-
-		return true;
 	}
 }
