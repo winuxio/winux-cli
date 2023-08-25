@@ -2,6 +2,10 @@
 
 namespace App\Services;
 
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
 
 class Nginx extends Service
@@ -76,6 +80,26 @@ class Nginx extends Service
 			info("Added the sites-enabled directory to the nginx config.");
 		}
 
+		return true;
+	}
+
+	public static function installDefaultPage(): bool
+	{
+		$src = storage_path('default-site') . DIRECTORY_SEPARATOR . 'www';
+		$dest = config('winux.paths.base') . DIRECTORY_SEPARATOR . 'www';
+	
+		// If the 'www' directory already exists, don't copy
+		if (is_dir($dest)) {
+			// info('Default site already exists.');
+			return true;
+		}
+
+		// Copy the default-site directory to the $dest
+		if (!File::copyDirectory($src, $dest)) {
+			error('Failed to copy the default site to ' . $dest);
+			return false;
+		}
+		
 		return true;
 	}
 }

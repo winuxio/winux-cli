@@ -2,6 +2,7 @@
 
 namespace App\Commands\Stack;
 
+use App\Classes\Winux;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
@@ -28,7 +29,7 @@ class StatusStack extends Command
      */
     public function handle()
     {
-        //
+		Winux::SetupEnvironment();
     }
 
     /**

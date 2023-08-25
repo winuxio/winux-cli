@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8" />
+        <title>Winux</title>
+        <meta name="description" contents="Default Winux Page" />
+        <link rel="icon" type="image/x-icon" href="favicon.ico" />
+        <style>
+            body {
+                background-color: #252525;
+                color: #fff;
+                font-family: sans-serif;
+                text-align: center;
+            }
+            #logo {
+                width: 80%;
+                max-width: 1200px;
+                margin: 0 auto;
+                display: block;
+            }
+            p {
+                line-height: 1.5rem;
+            }
+        </style>
+    </head>
+    <body>
+        <img id="logo" src="winux-logo.png" alt="Winux Logo" />
+        <div style="display: flex; flex-direction: column">
+            <!-- Insert generic message about how the user has reached this page  -->
+            <!-- because they've attmpted to reach a page that isn't setup with an nginx config -->
+            <h1>404 - Project / Site Not Found</h1>
+            <p style="max-width: 500px; margin: 0 auto">
+                You've reached this page because you've attempted to reach a
+                project that either doesn't exist or isn't setup with an nginx
+                config.
+            </p>
+        </div>
+    </body>
+</html>

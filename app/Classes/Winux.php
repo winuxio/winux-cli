@@ -44,6 +44,7 @@ class Winux
 		// Ensure our sites-enabled directory is included in the nginx config
 		Nginx::patchConfig();
 
+		Nginx::installDefaultPage();
 
 		return true;
 	}
