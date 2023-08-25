@@ -4,6 +4,7 @@ namespace App\Classes;
 
 use App\Enums\Editors;
 use App\Enums\Frameworks;
+use App\Enums\GitHubVisibility;
 use App\Services\Nginx;
 use App\Services\Postgres;
 use Illuminate\Support\Facades\File;
@@ -99,6 +100,61 @@ class Project
 		return file_put_contents($envFile, $currentEnvContent) ? true : false;
 	}
 
+	public function initializeGitRepository(): bool
+	{
+		// Init the repo
+		if (Process::path($this->path)->run(['git', 'init'])->failed()) {
+			error('Failed to initialize the git repository.');
+			return false;
+		}
+
+		// Add all the files
+		if (Process::path($this->path)->run(['git', 'add', '.'])->failed()) {
+			error('Failed to add the files to the git repository.');
+			return false;
+		}
+
+		// Commit the files
+		if (Process::path($this->path)->run(['git', 'commit', '-m', 'Initial Commit'])) {
+			error('Failed to commit the files to the git repository.');
+			return false;
+		}
+
+		// Set branch to main
+		if (Process::path($this->path)->run(['git', 'branch', '-M', 'main'])->failed()) {
+			error('Failed to set the git branch to main.');
+			return false;
+		}
+
+		return true;
+	}
+
+	public function createGitHubRepo(GitHubVisibility $visibility = GitHubVisibility::Private)
+	{
+		// Create the repo
+		$createRepoCommand = [
+			'gh',
+			'repo',
+			'create',
+			$this->name,
+			"--{$visibility->value}",
+			'--source=.',
+			'--remote=upstream'
+		];
+		if (Process::path($this->path)->run($createRepoCommand)->failed()) {
+			error('Failed to create the GitHub repository.');
+			return false;
+		}
+
+		// Push the repo
+		if (Process::path($this->path)->run(['git', 'push', '-u', 'origin', 'main'])) {
+			error('Failed to push the git repository to GitHub.');
+			return false;
+		}
+
+		return true;
+	}
+
 	public function destroy(): bool
 	{
 		// Delete the NGINX site for this project
@@ -192,7 +248,7 @@ class Project
 		$process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
 			if ($type === 'out') {
 				// $this->line($buffer);
-				echo($buffer);
+				echo ($buffer);
 			} else if ($type === 'err') {
 				error($buffer);
 				return false;

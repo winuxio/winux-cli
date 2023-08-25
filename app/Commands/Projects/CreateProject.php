@@ -7,13 +7,14 @@ use App\Classes\OpenSSL;
 use App\Classes\Project;
 use App\Classes\Site;
 use App\Classes\Winux;
+use App\Enums\GitHubVisibility;
 use App\Services\Nginx;
 use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, confirm, error, info};
+use function Laravel\Prompts\{alert, confirm, error, info, select};
 
 class CreateProject extends Command
 {
@@ -76,6 +77,18 @@ class CreateProject extends Command
 		info("{$project->name}'s .env file updated successfully!");
 
 		$this->title('Project created successfully!');
+
+		if (confirm('Initialize Git Repository and make initial commit?', true)) {
+			$project->initializeGitRepository();
+
+			if (confirm('Do you want to add the project to your GitHub account?', true)) {
+				$visibility = GitHubVisibility::from(
+					select('Public or Private Repository?', GitHubVisibility::selectValues())
+				);
+
+				$project->createGitHubRepo($visibility);
+			}
+		}
 
 		info("Switch into the new project directory with `cd $projectName`");
 		info("{$project->name} should now be live at http://{$project->getDomain()}");
