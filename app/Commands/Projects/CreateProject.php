@@ -98,7 +98,7 @@ class CreateProject extends Command
 
 		$project->openBrowser();
 
-		info("{$project->name} should now be live at https://' {$this->getDomain()}");
+		info("{$project->name} should now be live at https://' {$project->getDomain()}");
 
 		return 0;
 	}

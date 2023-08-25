@@ -115,8 +115,11 @@ class Project
 		}
 
 		// Commit the files
-		if (Process::path($this->path)->run(['git', 'commit', '-m', 'Initial Commit'])) {
+		$commit = Process::path($this->path)->run(['git', 'commit', '-m', 'Initial Commit']);
+		if ($commit->failed()) {
 			error('Failed to commit the files to the git repository.');
+			warning($commit->output());
+			error($commit->errorOutput());
 			return false;
 		}
 
@@ -139,7 +142,7 @@ class Project
 			$this->name,
 			"--{$visibility->value}",
 			'--source=.',
-			'--remote=upstream'
+			'--remote=origin'
 		];
 		if (Process::path($this->path)->run($createRepoCommand)->failed()) {
 			error('Failed to create the GitHub repository.');
@@ -147,8 +150,10 @@ class Project
 		}
 
 		// Push the repo
-		if (Process::path($this->path)->run(['git', 'push', '-u', 'origin', 'main'])) {
-			error('Failed to push the git repository to GitHub.');
+		$push = Process::path($this->path)->run(['git', 'push', '-u', 'origin', 'main']);
+		if ($push->failed()) {
+			alert('Failed to push the git repository to GitHub.');
+			error($push->errorOutput());
 			return false;
 		}
 
@@ -175,7 +180,6 @@ class Project
 		$dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
 		if (!$postgres->dropAll($dbName)) {
 			alert('Failed to drop some (or all) database resources.');
-			return false;
 		}
 
 		info("Dropped all database resources.\n");
