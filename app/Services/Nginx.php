@@ -83,23 +83,68 @@ class Nginx extends Service
 		return true;
 	}
 
+	public function reload(): bool
+	{
+		return $this->init('reload');
+	}
+
 	public static function installDefaultPage(): bool
 	{
 		$src = storage_path('default-site') . DIRECTORY_SEPARATOR . 'www';
-		$dest = config('winux.paths.base') . DIRECTORY_SEPARATOR . 'www';
-	
-		// If the 'www' directory already exists, don't copy
-		if (is_dir($dest)) {
-			// info('Default site already exists.');
-			return true;
-		}
+		// Copy to tmp do we can do a sudo copy to /var/www/html
+		$tmpDest = '/tmp/winux-default-www';		
+		$dest = '/var/www/html';
 
+		// If the 'www' directory already exists, don't copy
 		// Copy the default-site directory to the $dest
-		if (!File::copyDirectory($src, $dest)) {
-			error('Failed to copy the default site to ' . $dest);
+		if (!File::copyDirectory($src, $tmpDest)) {
+			error('Failed to copy the default site to ' . $tmpDest);
 			return false;
 		}
+
+		// Copy the default site to /var/www/html
+		$src = $tmpDest . DIRECTORY_SEPARATOR . '*';
+		// Loop through the files in the tmp directory and copy them to /var/www/html
+		foreach (glob($src) as $file) {
+			$destFile = $dest . DIRECTORY_SEPARATOR . basename($file);
+			if (Process::run(['sudo', 'cp', $file, $destFile])->failed()) {
+				error('Failed to copy ' . $file . ' to ' . $destFile);
+				return false;
+			}
+		}
 		
+		File::deleteDirectory($tmpDest);
 		return true;
+
+		// Old Dead code - Need to come up with a better solution for the collision with the default site 
+		// included with nginx
+		// // Copy the default site config to the sites-available directory
+		// $defaultSite = '00-default-winux';
+		// $src = storage_path('default-site') . DIRECTORY_SEPARATOR . $defaultSite;
+		// // Read in the default site config template and replace {{ WINUX_WWW_PATH }} with the $dest
+		// $defaultSiteContents = str_replace('{{ WINUX_WWW_PATH }}', $dest, File::get($src));
+
+		// $dest = self::availablePath() . DIRECTORY_SEPARATOR . $defaultSite;
+		// // Write the default site config to the sites-available directory
+		// if (!file_put_contents($dest, $defaultSiteContents)) {
+		// 	error('Failed to write the default site config to ' . $dest);
+		// 	return false;
+		// }
+
+		// // Symlink the default site config to the sites-enabled directory
+		// $src = self::availablePath() . DIRECTORY_SEPARATOR . $defaultSite;
+		// $dest = self::enabledPath() . DIRECTORY_SEPARATOR . $defaultSite;
+		// if (!is_link($dest)) {
+		// 	if (!symlink($src, $dest)) {
+		// 		error('Failed to symlink the default site config to ' . $dest);
+		// 		return false;
+		// 	}
+		// }
+
+		// // Restart nginx since we copied this in
+		// // Nginx::make()->restart();
+		// Nginx::make()->reload();
+
+		// return true;
 	}
 }
