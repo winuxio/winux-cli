@@ -13,7 +13,7 @@ class StatusStack extends Command
      *
      * @var string
      */
-    protected $signature = 'stack:status';
+    protected $signature = 'service:status';
 
     /**
      * The description of the command.

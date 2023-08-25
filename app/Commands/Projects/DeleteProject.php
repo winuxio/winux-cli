@@ -20,7 +20,7 @@ class DeleteProject extends Command
 	 *
 	 * @var string
 	 */
-	protected $signature = 'delete {projectName : The name of your new project that will be deleted from the local directory}'; // {--type=laravel}';
+	protected $signature = 'project:delete {projectName : The name of your new project that will be deleted from the local directory}'; // {--type=laravel}';
 
 	/**
 	 * The description of the command.

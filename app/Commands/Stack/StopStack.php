@@ -17,7 +17,7 @@ class StopStack extends Command
      *
      * @var string
      */
-    protected $signature = 'stack:stop {service?}';
+    protected $signature = 'service:stop {service?}';
 
     /**
      * The description of the command.

@@ -22,7 +22,7 @@ class CreateProject extends Command
 	 *
 	 * @var string
 	 */
-	protected $signature = 'create {projectName : The name of your new project that will be created in the local directory}'; // {--type=laravel}';
+	protected $signature = 'project:create {projectName : The name of your new project that will be created in the local directory}'; // {--type=laravel}';
 
 	/**
 	 * The description of the command.
@@ -82,7 +82,7 @@ class CreateProject extends Command
 		}
 
 		$project->openBrowser();
-		
+
 		info("{$project->name} should now be live at https://' {$this->getDomain()}");
 
 		return 0;

@@ -65,6 +65,24 @@ return [
         LaravelZero\Framework\Commands\StubPublishCommand::class,
 		\App\Commands\InspireCommand::class,
 		\App\Commands\LocalInstall::class,
+
+		// App Commands
+		\App\Commands\Nginx\CreateNginxSite::class,
+		\App\Commands\Nginx\DeleteNginxSite::class,
+		\App\Commands\Nginx\DisableNginxSite::class,
+		\App\Commands\Nginx\EnableNginxSite::class,
+		\App\Commands\Nginx\RestartNginx::class,
+
+		\App\Commands\SSL\InstallRootCA::class,
+
+		\App\Commands\Postgres\CreateDatabase::class,
+		\App\Commands\Postgres\DropDatabase::class,
+		\App\Commands\Postgres\RestartPostgres::class,
+
+		\App\Commands\Php\RestartPhpFpm::class,
+
+		\App\Commands\Redis\RestartRedis::class,
+		
     ],
 
     /*
