@@ -89,9 +89,7 @@ class OpenSSL
 		$rootCert = join(DIRECTORY_SEPARATOR, [$rootCApath, config('winux.ssl.root.cert')]);
 
 		// Convert the rootcert to a windows path
-		// dump($rootCert);
 		$rootCertWinPath = trim(Process::run(['wslpath', '-w', $rootCert])->output());
-		// dd($rootCertWinPath);
 
 		// PowerShell script content
 		$psScript = <<<POWERSHELL
@@ -102,15 +100,11 @@ class OpenSSL
 					\$store.Add(\$cert)
 					\$store.Close()
 					POWERSHELL;
-		// dd($psScript);
-		// Create a temporary file to store the PowerShell script
-		// $psScriptFile = tmpfile();
+
 		// Save the $psScript to a script in the rootPath
 		$psScriptFile = join(DIRECTORY_SEPARATOR, [$rootPath, 'install-root.ps1']);
 		file_put_contents($psScriptFile, $psScript);
 
-		// Write the PowerShell script to the temporary file
-		// file_put_contents($psScriptFile, $psScript);
 		// Run the PowerShell script
 		$process = Process::input($psScript)->run(['powershell.exe', '-noprofile', '-noninteractive', '-file', $psScriptFile]);
 		if ($process->failed()) {
