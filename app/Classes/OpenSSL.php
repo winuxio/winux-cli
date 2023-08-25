@@ -5,7 +5,7 @@ namespace App\Classes;
 use App\Services\Nginx;
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\{alert, info, error};
+use function Laravel\Prompts\{alert, info, error, warning};
 
 class OpenSSL
 {
@@ -71,5 +71,55 @@ class OpenSSL
 		}
 
 		return true;
+	}
+
+	public static function installRoot()
+	{
+		// Run 'net.exe session', if it fails, we are not an admin
+		$process = Process::run(['net.exe', 'session']);
+		if ($process->failed()) {
+			alert('This terminal was not opened as an Administrator. Please open a new terminal as an Administrator and try again.');
+			warning('To fix this: Right click on the terminal icon/shortcut and click "Run as Administrator".');
+			warning('Then run the command: `winux ssl:root:install`');
+			return false;
+		}
+
+		$rootPath = config('winux.paths.base');
+		$rootCApath = join(DIRECTORY_SEPARATOR, [config('winux.paths.base'), 'ssl', 'root']);
+		$rootCert = join(DIRECTORY_SEPARATOR, [$rootCApath, config('winux.ssl.root.cert')]);
+
+		// Convert the rootcert to a windows path
+		// dump($rootCert);
+		$rootCertWinPath = trim(Process::run(['wslpath', '-w', $rootCert])->output());
+		// dd($rootCertWinPath);
+
+		// PowerShell script content
+		$psScript = <<<POWERSHELL
+					\$certPath = '$rootCertWinPath'
+					\$cert = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2 \$certPath
+					\$store = New-Object System.Security.Cryptography.X509Certificates.X509Store 'Root', 'LocalMachine'
+					\$store.Open('ReadWrite')
+					\$store.Add(\$cert)
+					\$store.Close()
+					POWERSHELL;
+		// dd($psScript);
+		// Create a temporary file to store the PowerShell script
+		// $psScriptFile = tmpfile();
+		// Save the $psScript to a script in the rootPath
+		$psScriptFile = join(DIRECTORY_SEPARATOR, [$rootPath, 'install-root.ps1']);
+		file_put_contents($psScriptFile, $psScript);
+
+		// Write the PowerShell script to the temporary file
+		// file_put_contents($psScriptFile, $psScript);
+		// Run the PowerShell script
+		$process = Process::input($psScript)->run(['powershell.exe', '-noprofile', '-noninteractive', '-file', $psScriptFile]);
+		if ($process->failed()) {
+			alert('Failed to install the root authority cert.');
+			error($process->errorOutput());
+			return false;
+		}
+
+		info('Installed the root authority cert.');
+		warning('FULLY Close and reopen your browser for the changes to take effect.');
 	}
 }
