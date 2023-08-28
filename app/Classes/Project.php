@@ -69,7 +69,8 @@ class Project
 		return Postgres::make()->createAll($this->dbName, password: $this->dbPassword);
 	}
 
-	public function setupEnv(): bool
+	// Configure new Project Env
+	public function initEnv(): bool
 	{
 		$newValues = [
 			'APP_NAME' => "\"$this->name\"",
@@ -83,6 +84,38 @@ class Project
 			'DB_USERNAME' => "\"{$this->dbName}\"",
 			'DB_PASSWORD' => "\"{$this->dbPassword}\"",
 		];
+
+		return $this->updateEnv($newValues);
+	}
+
+	// Configure existing project Env
+	public function configureEnv(): bool
+	{
+		$newValues = [
+			'APP_NAME' => "\"$this->name\"",
+			'APP_URL' => '"https://' . $this->getDomain() . '"',
+			'CACHE_DRIVER' => 'redis',
+			'SESSION_DRIVER' => 'redis',
+			'QUEUE_CONNECTION' => 'redis',
+			'DB_CONNECTION' => 'pgsql',
+			'DB_PORT' => Postgres::make()->getPort(),
+			'DB_DATABASE' => "\"{$this->dbName}\"",
+			'DB_USERNAME' => "\"{$this->dbName}\"",
+			'DB_PASSWORD' => "\"{$this->dbPassword}\"",
+		];
+
+		return $this->updateEnv($newValues);
+	}
+
+	private function updateEnv(array $newValues): bool
+	{
+		if (!File::exists($this->path . DIRECTORY_SEPARATOR . '.env')) {
+			// Copy the .env.example to .env
+			if (!File::copy($this->path . DIRECTORY_SEPARATOR . '.env.example', $this->path . DIRECTORY_SEPARATOR . '.env')) {
+				error('Failed to copy the .env.example file to .env');
+				return false;
+			}
+		}
 
 		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
 		$currentEnvContent = file_get_contents($envFile);

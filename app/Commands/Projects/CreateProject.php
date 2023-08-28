@@ -69,7 +69,7 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
-		if (!$project->setupEnv()) {
+		if (!$project->initEnv()) {
 			alert('Failed to create the .env file.');
 			return Command::FAILURE;
 		}
