@@ -24,7 +24,7 @@ Winux automates nginx setup, database creation, and environment configuration, g
 For full documentation, visit the [documentation](https://docs.winux.io/).
 
 > [!NOTE]
-> The quick start guide is comcing soon!
+> The quick start guide is coming soon!
 
 ## Support the development
 **Do you like this project? Support it by donating**
