@@ -1,0 +1,50 @@
+# .github/workflows/laravel-zero-build.yml
+
+name: Winux CLI Build
+
+on:
+  push:
+    branches: [ main, action-build ]
+  pull_request:
+    branches: [ main, action-build ]
+
+env:
+  VERSION: 'unreleased'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.2'
+        tools: composer:v2
+        extensions: mbstring, xml, ctype, json
+
+    - name: Get Composer Cache Directory
+      id: composer-cache
+      run: echo "COMPOSER_CACHE_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+
+    - name: Cache Composer dependencies
+      uses: actions/cache@v3
+      with:
+        path: ${{ steps.composer-cache.outputs.COMPOSER_CACHE_DIR }}
+        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
+        restore-keys: ${{ runner.os }}-composer-
+
+    - name: Install Composer dependencies
+      run: composer install --prefer-dist --no-progress
+
+    - name: Run Laravel Zero build command
+      run: php winux app:build --build-version=${{ env.VERSION }}
+
+    - name: Upload Build Artifact
+      uses: actions/upload-artifact@v3
+      with:
+        name: winux-build
+        path: builds/winux

@@ -11,6 +11,7 @@
   <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/dt/laravel-zero/framework.svg" alt="Total Downloads"></a>
   <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/v/laravel-zero/framework.svg?label=stable" alt="Latest Stable Version"></a>
   <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/l/laravel-zero/framework.svg" alt="License"></a>
+  <a href="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml"><img src="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml/badge.svg" alt="Build Status"></a>
 </p>
 
 <h4> <center>This is a <bold>community project</bold> and not an official Laravel one </center></h4>
