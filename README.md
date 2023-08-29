@@ -1,7 +1,3 @@
-<a href="https://supportukrainenow.org/"><img src="https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner-direct.svg" width="100%"></a>
-
-------
-
 <p align="center">
 	<img title="Winux CLI" height="200" src="https://github.com/winuxio/winux-cli/assets/77644584/60f6b48a-1fe5-4350-8b9e-0bdc2ceed64a" />
 </p>
@@ -14,7 +10,7 @@
 
 <h4><center><bold>Simplify</bold> local dev ops for Windows/WSL</center></h4>
 
-Winux, created by [Chris Reed](https://github.com/chrisreedio), automates nginx setup, database creation, and environment configuration, getting you ready to code in 30 seconds.
+Winux automates nginx setup, database creation, and environment configuration, getting you ready to code in 30 seconds.
 
 - Built on top of the [Laravel Zero](https://laravel-zero.com/) components.
 
@@ -34,6 +30,15 @@ For full documentation, visit [docs.winux.io](https://docs.winux.io/).
 
 - GitHub: [Sponsor](https://github.com/sponsors/chrisreedio)
 
+## Credits
+
+- [Chris Reed](https://github.com/chrisreedio)
+- [All Contributors](../../contributors)
+
 ## License
 
 The License choice for Winux CLI is still pending.
+
+---
+
+[![Stand With Ukraine](https://raw.githubusercontent.com/vshymanskyy/StandWithUkraine/main/banner2-direct.svg)](https://stand-with-ukraine.pp.ua)
