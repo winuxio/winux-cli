@@ -3,39 +3,37 @@
 ------
 
 <p align="center">
-    <img title="Winux CLI" height="200" src="https://github.com/winuxio/winux-cli/assets/77644584/60f6b48a-1fe5-4350-8b9e-0bdc2ceed64a" />
+	<img title="Winux CLI" height="200" src="https://github.com/winuxio/winux-cli/assets/77644584/60f6b48a-1fe5-4350-8b9e-0bdc2ceed64a" />
 </p>
 
 <p align="center">
-  <a href="https://github.com/laravel-zero/framework/actions"><img src="https://github.com/laravel-zero/laravel-zero/actions/workflows/tests.yml/badge.svg" alt="Build Status"></img></a>
-  <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/dt/laravel-zero/framework.svg" alt="Total Downloads"></a>
-  <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/v/laravel-zero/framework.svg?label=stable" alt="Latest Stable Version"></a>
-  <a href="https://packagist.org/packages/laravel-zero/framework"><img src="https://img.shields.io/packagist/l/laravel-zero/framework.svg" alt="License"></a>
-  <a href="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml"><img src="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml/badge.svg" alt="Build Status"></a>
+    <a href="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml"><img src="https://github.com/winuxio/winux-cli/actions/workflows/laravel-zero-build.yml/badge.svg" alt="Build Status"></a>
+    <img alt="Latest Release" src="https://img.shields.io/github/v/release/winuxio/winux-cli">
+    <a href="https://discord.gg/ZWJQ22dX3b"><img alt="Discord" src="https://img.shields.io/discord/1137287672944144385"></a>  
 </p>
 
-<h4> <center>This is a <bold>community project</bold> and not an official Laravel one </center></h4>
+<h4><center><bold>Simplify</bold> local dev ops for Windows/WSL</center></h4>
 
-Laravel Zero was created by [Nuno Maduro](https://github.com/nunomaduro) and [Owen Voke](https://github.com/owenvoke), and is a micro-framework that provides an elegant starting point for your console application. It is an **unofficial** and customized version of Laravel optimized for building command-line applications.
+Winux, created by [Chris Reed](https://github.com/chrisreedio), automates nginx setup, database creation, and environment configuration, getting you ready to code in 30 seconds.
 
-- Built on top of the [Laravel](https://laravel.com) components.
-- Optional installation of Laravel [Eloquent](https://laravel-zero.com/docs/database/), Laravel [Logging](https://laravel-zero.com/docs/logging/) and many others.
-- Supports interactive [menus](https://laravel-zero.com/docs/build-interactive-menus/) and [desktop notifications](https://laravel-zero.com/docs/send-desktop-notifications/) on Linux, Windows & MacOS.
-- Ships with a [Scheduler](https://laravel-zero.com/docs/task-scheduling/) and  a [Standalone Compiler](https://laravel-zero.com/docs/build-a-standalone-application/).
-- Integration with [Collision](https://github.com/nunomaduro/collision) - Beautiful error reporting
+- Built on top of the [Laravel Zero](https://laravel-zero.com/) components.
 
 ------
 
 ## Documentation
 
-For full documentation, visit [laravel-zero.com](https://laravel-zero.com/).
+For full documentation, visit [docs.winux.io](https://docs.winux.io/).
+
+## Quick Start
+
+> [!NOTE]
+> TODO - This section is coming soon!
 
 ## Support the development
 **Do you like this project? Support it by donating**
 
-- PayPal: [Donate](https://www.paypal.com/cgi-bin/webscr?cmd=_s-xclick&hosted_button_id=66BYDWAT92N6L)
-- Patreon: [Donate](https://www.patreon.com/nunomaduro)
+- GitHub: [Sponsor](https://github.com/sponsors/chrisreedio)
 
 ## License
 
-Laravel Zero is an open-source software licensed under the MIT license.
+The License choice for Winux CLI is still pending.
