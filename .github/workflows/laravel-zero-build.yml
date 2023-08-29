@@ -1,6 +1,6 @@
 # .github/workflows/laravel-zero-build.yml
 
-name: Laravel Zero CI
+name: Winux CLI Build
 
 on:
   push:
