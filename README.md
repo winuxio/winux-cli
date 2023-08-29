@@ -13,18 +13,18 @@
 
 Winux automates nginx setup, database creation, and environment configuration, getting you ready to code in 30 seconds.
 
-- Built on top of the [Laravel Zero](https://laravel-zero.com/) components.
-
-------
-
-## Documentation
-
-For full documentation, visit [docs.winux.io](https://docs.winux.io/).
+- **Simple** - Winux is designed to be simple to use and easy to understand.
+- **Powerful** - Winux is powered by the [Laravel Zero](https://laravel-zero.com/) framework.
+- **Flexible** - Winux is designed to work with many different frameworks and languages.
+- **Fast** - Winux is designed to be fast, and to get you coding in 30 seconds.
+- **Windows** - Winux is designed to improve the WSL/Windows development experience.
 
 ## Quick Start
 
+For full documentation, visit the [documentation](https://docs.winux.io/).
+
 > [!NOTE]
-> TODO - This section is coming soon!
+> The quick start guide is comcing soon!
 
 ## Support the development
 **Do you like this project? Support it by donating**
