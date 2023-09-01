@@ -22,7 +22,7 @@ class RestartStack extends Command
      *
      * @var string
      */
-    protected $description = 'Restart the stack (Nginx, PHP, Postgres, Redis, etc.)';
+    protected $description = 'Restart the stack (Nginx, PHP, Postgres/MySQL, Redis, etc.)';
 
     /**
      * Execute the console command.
