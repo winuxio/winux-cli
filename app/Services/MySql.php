@@ -4,11 +4,23 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Process;
 
-use function Laravel\Prompts\error;
+use function Laravel\Prompts\{error, warning};
 
 class MySql extends Service
 {
 	protected static ?string $serviceName = 'mysql-server';
+
+	protected function init(string $command): bool
+	{
+		// Additional Linux Distro Checks
+		// Explicitly check and return false if we're Debian
+		if (file_exists('/etc/debian_version')) {
+			warning('MySQL is not supported on Debian.');
+			return false;
+		}
+
+		return parent::init($command);
+	}
 
 	protected function postInstall(): bool
 	{
@@ -58,8 +70,5 @@ class MySql extends Service
 		info('Flushed privileges.');
 
 		return true;
-
-
-				
 	}
 }

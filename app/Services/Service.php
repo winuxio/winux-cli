@@ -29,17 +29,17 @@ abstract class Service
 
 	public function start(): bool
 	{
-		return self::init(__FUNCTION__);
+		return static::init(__FUNCTION__);
 	}
 
 	public function stop(): bool
 	{
-		return self::init(__FUNCTION__);
+		return static::init(__FUNCTION__);
 	}
 
 	public function restart(): bool
 	{
-		return self::init(__FUNCTION__);
+		return static::init(__FUNCTION__);
 	}
 
 	protected function init(string $command): bool
