@@ -13,6 +13,7 @@ return [
 
 	'nginx' => [
 		'config' => '/etc/nginx/nginx.conf',
+		'domain' => 'local.winux.io'
 	],
 
 	'ssl' => [

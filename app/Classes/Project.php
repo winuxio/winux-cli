@@ -29,7 +29,7 @@ class Project
 
 	public function getDomain(): string
 	{
-		return $this->name . '.localhost';
+		return $this->name . '.' . config('winux.nginx.domain');
 	}
 
 	/**
