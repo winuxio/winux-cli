@@ -248,8 +248,13 @@ class Project
 		note('Attempting to open the project in the browser...');
 		$process = Process::run(['explorer.exe', 'https://' . $this->getDomain()]);
 		if ($process->failed()) {
-			warning('It appears this might have failed.');
-			error($process->output());
+			$output = $process->output();
+			if ($output) {
+				error($output);
+			} else {
+				// warning('It appears this might have failed.');
+				// error('Failed to open the project in the browser.');
+			}
 			return false;
 		}
 

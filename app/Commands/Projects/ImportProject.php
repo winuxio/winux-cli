@@ -32,43 +32,44 @@ class ImportProject extends Command
      */
     public function handle()
     {
-		$projectName = $this->argument('projectName');
-		$project = Project::create($projectName);
+        $projectName = $this->argument('projectName');
+        $project = Project::create($projectName);
 
-		info("Importing project '{$project->name}' at '{$project->path}'");
+        info("Importing project '{$project->name}' at '{$project->path}'");
 
-		info('Performing infrastructure configuration...');
+        info('Performing infrastructure configuration...');
 
-		if (!$project->setupNginx()) {
-			alert('Failed to create the nginx site.');
-			return Command::FAILURE;
-		}
+        if (!$project->setupNginx()) {
+            alert('Failed to create the nginx site.');
+            return Command::FAILURE;
+        }
 
-		Nginx::make()->reload();
+        Nginx::make()->reload();
 
-		if (!$project->setupDatabase()) {
-			alert('Failed to create all required postgres resources.');
-			return Command::FAILURE;
-		}
+        if (!$project->setupDatabase()) {
+            alert('Failed to create all required postgres resources.');
+            return Command::FAILURE;
+        }
 
-		if (!$project->configureEnv()) {
-			alert('Failed to create the .env file.');
-			return Command::FAILURE;
-		}
+        if (!$project->configureEnv()) {
+            alert('Failed to create the .env file.');
+            return Command::FAILURE;
+        }
 
-		info("{$project->name}'s .env file updated successfully!");
+        info("{$project->name}'s .env file updated successfully!");
 
-		$this->title('Project imported successfully!');
+        $this->title('Project imported successfully!');
 
-		info("Switch into the new project directory with `cd $projectName`");
-		info("{$project->name} should now be live at http://{$project->getDomain()}");
-		if (confirm('Do you want to open the project in VS Code?', true)) {
-			$project->openEditor();
-		}
+        if (confirm('Do you want to open the project in VS Code?', true)) {
+            $project->openEditor();
+        }
 
-		$project->openBrowser();
+        if (confirm('Do you want to open the project in your browser?', true)) {
+            $project->openBrowser();
+        }
 
-		info("{$project->name} should now be live at https://{$project->getDomain()}");
+        info("{$project->name} is live at https://{$project->getDomain()}");
+        info("Switch into the new project directory with `cd $projectName` if needed.");
     }
 
     /**

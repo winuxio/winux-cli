@@ -90,15 +90,16 @@ class CreateProject extends Command
 			}
 		}
 
-		info("Switch into the new project directory with `cd $projectName`");
-		info("{$project->name} should now be live at http://{$project->getDomain()}");
 		if (confirm('Do you want to open the project in VS Code?', true)) {
 			$project->openEditor();
 		}
 
-		$project->openBrowser();
+		if (confirm('Do you want to open the project in your browser?', true)) {
+			$project->openBrowser();
+		}
 
-		info("{$project->name} should now be live at https://' {$project->getDomain()}");
+		info("{$project->name} is live at https://{$project->getDomain()}");
+		info("Switch into the new project directory with `cd $projectName` if needed.");
 
 		return 0;
 	}
