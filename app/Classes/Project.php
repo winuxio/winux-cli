@@ -5,6 +5,7 @@ namespace App\Classes;
 use App\Enums\Editors;
 use App\Enums\Frameworks;
 use App\Enums\GitHubVisibility;
+use App\Enums\Packages;
 use App\Services\Nginx;
 use App\Services\Postgres;
 use Illuminate\Support\Facades\File;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\alert;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
 
@@ -26,6 +28,8 @@ class Project
 	protected string $dbName;
 	// protected string $dbUser;
 	protected string $dbPassword;
+
+	protected bool $hasRepo = false;
 
 	public function getDomain(): string
 	{
@@ -141,20 +145,9 @@ class Project
 			return false;
 		}
 
-		// Add all the files
-		if (Process::path($this->path)->run(['git', 'add', '.'])->failed()) {
-			error('Failed to add the files to the git repository.');
-			return false;
-		}
+		$this->hasRepo = true;
 
-		// Commit the files
-		$commit = Process::path($this->path)->run(['git', 'commit', '-m', 'Initial Commit']);
-		if ($commit->failed()) {
-			error('Failed to commit the files to the git repository.');
-			warning($commit->output());
-			error($commit->errorOutput());
-			return false;
-		}
+		$this->gitCommit('Initial commit');
 
 		// Set branch to main
 		if (Process::path($this->path)->run(['git', 'branch', '-M', 'main'])->failed()) {
@@ -163,6 +156,47 @@ class Project
 		}
 
 		return true;
+	}
+
+	public function gitCommit(string $message): bool
+	{
+		// Add all the files
+		if (Process::path($this->path)->run(['git', 'add', '.'])->failed()) {
+			error('Failed to add the files to the git repository.');
+			return false;
+		}
+
+		// Commit the files
+		$commit = Process::path($this->path)->run(['git', 'commit', '-m', $message]);
+		if ($commit->failed()) {
+			error('Failed to commit the files to the git repository.');
+			warning($commit->output());
+			error($commit->errorOutput());
+			return false;
+		}
+
+		return true;
+	}
+
+	public function installAdditionalPackages(bool $commit = true): void
+	{
+		// Build list of packages to choose from
+		$packages = collect(Packages::cases())
+			->mapWithKeys(fn ($package) => [$package->value => $package->label()]);
+
+		$extraPackages = multiselect(
+			'Install any additional packages? (More coming!)',
+			$packages,
+			hint: 'Press space to select, enter to continue',
+		);
+
+		collect($extraPackages)->each(function ($packageValue) use ($commit) {
+			$package = Packages::from($packageValue);
+			$package->install($this->path);
+			if ($commit) {
+				$this->gitCommit("Installed {$package->label()}");
+			}
+		});
 	}
 
 	public function createGitHubRepo(GitHubVisibility $visibility = GitHubVisibility::Private)
@@ -296,6 +330,10 @@ class Project
 				return false;
 			}
 		});
+
+		// Install optional additional packages
+		// ask to install Filament
+
 
 		if ($process->failed()) {
 			error('Failed to create the laravel project.');

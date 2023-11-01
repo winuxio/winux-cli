@@ -8,13 +8,14 @@ use App\Classes\Project;
 use App\Classes\Site;
 use App\Classes\Winux;
 use App\Enums\GitHubVisibility;
+use App\Enums\Packages;
 use App\Services\Nginx;
 use App\Services\Postgres;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, confirm, error, info, select};
+use function Laravel\Prompts\{alert, confirm, error, info, select, multiselect};
 
 class CreateProject extends Command
 {
@@ -89,6 +90,8 @@ class CreateProject extends Command
 				$project->createGitHubRepo($visibility);
 			}
 		}
+
+		$project->installAdditionalPackages();
 
 		if (confirm('Do you want to open the project in VS Code?', true)) {
 			$project->openEditor();
