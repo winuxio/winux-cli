@@ -26,7 +26,7 @@ class Certificate
 			}
 			info('Deleted the cert directory for the domain: ' . $domain);
 		}
-		
+
 		return true;
 	}
 
@@ -73,7 +73,8 @@ class Certificate
 		// Create a CSR for the domain then sign the CSR with the Root CA if it doesn't exist
 		// Use the localhost.conf file for the CSR
 		if (!is_file($certFile)) {
-			info('Generating the CSR using the conf file: ' . $domainConfFile);
+			info('Generating a CSR for the domain: ' . $domain);
+			// info('Generating the CSR using the conf file: ' . $domainConfFile);
 			$csrGeneration = Process::run([
 				// 'openssl', 'req', '-new', '-key', $keyFile, '-out', $certFile, '-config', $domainConfFile, '-extensions', 'v3_req'
 				'openssl', 'req', '-new', '-key', $keyFile, '-out', $csrFile, '-config', $domainConfFile
@@ -91,14 +92,14 @@ class Certificate
 
 			// Sign the CSR with the Root CA
 			$signing = Process::run([
-				'openssl', 'x509', '-req', 
-				'-days', '3650', 
-				'-in', $csrFile, 
-				'-out', $certFile, 
+				'openssl', 'x509', '-req',
+				'-days', '3650',
+				'-in', $csrFile,
+				'-out', $certFile,
 				'-CA', $rootCrtPath,
 				'-CAkey', $rootKeyPath,
 				'-CAcreateserial',
-				'-extensions', 'v3_req', 
+				'-extensions', 'v3_req',
 				'-extfile', $domainConfFile
 			]);
 			if ($signing->failed()) {
