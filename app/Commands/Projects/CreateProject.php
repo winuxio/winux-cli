@@ -7,6 +7,7 @@ use App\Classes\OpenSSL;
 use App\Classes\Project;
 use App\Classes\Site;
 use App\Classes\Winux;
+use App\Enums\Editors;
 use App\Enums\GitHubVisibility;
 use App\Enums\Packages;
 use App\Services\Nginx;
@@ -93,12 +94,23 @@ class CreateProject extends Command
 
 		$project->installAdditionalPackages();
 
-		if (confirm('Do you want to open the project in VS Code?', true)) {
-			$project->openEditor();
+		$ide = null;
+		if (confirm('Do you want to open the project in your IDE?', true)) {
+			$ide = select(
+				'Which IDE do you want to use?',
+				collect(Editors::cases())
+					->mapWithKeys(fn ($editor) => [$editor->value => $editor->getLabel()])
+					->toArray()
+			);
+			$ide = Editors::from($ide);
 		}
 
 		if (confirm('Do you want to open the project in your browser?', true)) {
 			$project->openBrowser();
+		}
+
+		if ($ide) {
+			$project->openEditor($ide);
 		}
 
 		info("{$project->name} is live at https://{$project->getDomain()}");
