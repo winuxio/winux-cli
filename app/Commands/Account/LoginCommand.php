@@ -3,6 +3,8 @@
 namespace App\Commands\Account;
 
 use App\Classes\Utility;
+use App\Http\Integrations\Winux\Requests\ClientRegistrationRequest;
+use App\Http\Integrations\Winux\WinuxAuthConnector;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
@@ -40,21 +42,26 @@ class LoginCommand extends Command
      */
     public function handle()
     {
-        // $loginUuid = Str::uuid()->toString();
-        // $loginUuid = (string)Str::ulid();
-        $loginUuid = Str::ulid();
-        // dd($loginUuid);
-        $loginUrl = 'https://winux.io/login/cli';
-        if (App::environment('development')) {
-            // $loginUrl = 'https://winux-app.local.winux.io/login/cli';
-            $loginUrl = 'https://winux-app.local.winux.io/api/client/register/' . $loginUuid;
-            dd($loginUrl);
+        $winuxAuthConnector = new WinuxAuthConnector();
+        $registerRequest = new ClientRegistrationRequest();
+        $registerResponse = $winuxAuthConnector->send($registerRequest);
+        if ($registerResponse->failed()) {
+            $this->warn('Failed to register this client with Winux.io. Error: ' . $registerResponse->status());
+            // $this->warn($registerResponse->json());
+            $this->error($registerResponse->json('message'));
+            return false;
         }
+        $diceware = $registerResponse->json('dice');
+        $authorizeUrl = $registerResponse->json('url');
+
         info('Logging into to your Winux.io Account...');
         $autoOpen = confirm('Attempt to open the Winux.io login page in your default browser?', true);
-        note("If the login page does not open, please visit $loginUrl in your browser.");
+        note("If the login page does not open, please visit the following URL in your browser:");
+        info("\t\t" . $authorizeUrl . "\n");
+        note('Verify the following codeword matches the one displayed on the authorize page:');
+        info("\t\t" . $diceware . "\n");
         if ($autoOpen) {
-            $result = Utility::openBrowser($loginUrl);
+            $result = Utility::openBrowser($authorizeUrl);
             if ($result !== true) {
                 alert('Failed to open the login page in your browser.');
                 error("Error: '$result'");
