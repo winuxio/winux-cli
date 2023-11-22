@@ -303,20 +303,36 @@ class Project
 		}
 	}
 
-	private function installLaravel(): bool
+	private function installLaravelInstaller(): bool
 	{
-		// Ensure the laravel installer is installed.
-		// Check if the laravel installer is installed.
-		$process = Process::run(['laravel', '--version']);
+		$process = Process::run(['composer', 'global', 'require', 'laravel/installer']);
 		if ($process->failed()) {
-			$process = Process::run(['composer', 'global', 'require', 'laravel/installer']);
-			if ($process->failed()) {
-				error('Failed to install the laravel installer.');
-				return false;
-			}
+			error('Failed to install the laravel installer.');
+			return false;
 		}
 
-		$process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
+		return true;
+	}
+
+	private function installLaravel(): bool
+	{
+		// // Ensure the laravel installer is installed.
+		// $laravelCommand = 'laravel';
+		// $laravelPath = trim(shell_exec("which $laravelCommand"));
+		// alert('Laravel Path: ' . $laravelPath);
+		// if (empty($laravelPath)) {
+		// 	error("'$laravelCommand' command not found.");
+		// 	$this->installLaravelInstaller();
+		// }
+
+		// // Check if the laravel installer is installed.
+		// $process = Process::run(['laravel', '--version']);
+		// if ($process->failed()) {
+		// 	$this->installLaravelInstaller();
+		// }
+
+		// $process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
+		$process = Process::run(['composer', 'create-project', 'laravel/laravel', $this->name], function ($type, $buffer) {
 			if ($type === 'out') {
 				// $this->line($buffer);
 				echo ($buffer);

@@ -1,4 +1,4 @@
-<?php
+	<?php
 
 namespace App\Classes;
 
@@ -16,7 +16,7 @@ class OpenSSL
 
 		// Ensure that both the cert and key paths exist
 		if (!is_dir($certPath)) {
-			if (!mkdir($certPath)) {
+			if (!mkdir($certPath, 0755, true)) {
 				error('Failed to create the cert directory.');
 				return false;
 			}
