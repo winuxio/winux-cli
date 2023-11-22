@@ -1,4 +1,4 @@
-	<?php
+<?php
 
 namespace App\Classes;
 
@@ -77,7 +77,8 @@ class OpenSSL
 	{
 		// Run 'net.exe session', if it fails, we are not an admin
 		$process = Process::run(['net.exe', 'session']);
-		if ($process->failed()) {
+		dump('Exit Code: ' . $process->exitCode());
+		if ($process->exitCode() != 0) {
 			alert('This terminal was not opened as an Administrator. Please open a new terminal as an Administrator and try again.');
 			warning('To fix this: Right click on the terminal icon/shortcut and click "Run as Administrator".');
 			warning('Then run the command: `winux ssl:root:install`');
@@ -106,7 +107,12 @@ class OpenSSL
 		file_put_contents($psScriptFile, $psScript);
 
 		// Run the PowerShell script
-		$process = Process::input($psScript)->run(['powershell.exe', '-noprofile', '-noninteractive', '-file', $psScriptFile]);
+		$process = Process::input($psScript)->run([
+			'powershell.exe', 
+			'-noprofile', 
+			'-noninteractive',
+			'-ExecutionPolicy', 'Bypass',
+			'-file', $psScriptFile]);
 		if ($process->failed()) {
 			alert('Failed to install the root authority cert.');
 			error($process->errorOutput());
