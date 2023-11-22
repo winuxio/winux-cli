@@ -52,7 +52,7 @@ class CreateProject extends Command
 
 		// Lets create the project now
 		if (!$project->installFramework()) {
-			alert('Failed to install the project\s framework.');
+			alert('Failed to install the project\'s framework.');
 			return 1;
 		}
 		info("Framework files installed for $projectName");
