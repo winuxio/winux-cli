@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Process\Exceptions\ProcessFailedException;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
 
@@ -59,6 +60,30 @@ class Nginx extends Service
 		]);
 	}
 
+	// public static function patchConfig(): bool
+	// {
+	// 	$nginxConfig = config('winux.nginx.config');
+	// 	$nginxConfigContents = file_get_contents($nginxConfig);
+
+	// 	// Check if the sites-enabled directory is already included in the nginx config
+	// 	if (strpos($nginxConfigContents, self::enabledPath()) === false) {
+	// 		// Add the sites-enabled directory to the nginx config
+	// 		$nginxConfigContents = str_replace(
+	// 			'include /etc/nginx/conf.d/*.conf;',
+	// 			"include /etc/nginx/conf.d/*.conf;\n\tinclude " . self::enabledPath() . "/*;",
+	// 			$nginxConfigContents
+	// 		);
+
+	// 		// Write the new nginx config
+	// 		if (!file_put_contents($nginxConfig, $nginxConfigContents)) {
+	// 			throw new \Exception('Failed to write to the nginx config.');
+	// 		}
+	// 		info("Added the sites-enabled directory to the nginx config.");
+	// 	}
+
+	// 	return true;
+	// }
+
 	public static function patchConfig(): bool
 	{
 		$nginxConfig = config('winux.nginx.config');
@@ -73,11 +98,18 @@ class Nginx extends Service
 				$nginxConfigContents
 			);
 
-			// Write the new nginx config
-			if (!file_put_contents($nginxConfig, $nginxConfigContents)) {
-				throw new \Exception('Failed to write to the nginx config.');
+			// Prepare the command to write the new nginx config with sudo
+			$cmd = sprintf('echo %s | sudo tee %s', escapeshellarg($nginxConfigContents), escapeshellarg($nginxConfig));
+
+			// Run the command
+			$process = Process::run($cmd);
+			if ($process->failed()) {
+				error('Failed to write to the nginx config: ' . $process->errorOutput());
+				return false;
 			}
+
 			info("Added the sites-enabled directory to the nginx config.");
+			return true;
 		}
 
 		return true;
@@ -92,7 +124,7 @@ class Nginx extends Service
 	{
 		$src = storage_path('default-site') . DIRECTORY_SEPARATOR . 'www';
 		// Copy to tmp do we can do a sudo copy to /var/www/html
-		$tmpDest = '/tmp/winux-default-www';		
+		$tmpDest = '/tmp/winux-default-www';
 		$dest = '/var/www/html';
 
 		// If the 'www' directory already exists, don't copy
@@ -112,7 +144,7 @@ class Nginx extends Service
 				return false;
 			}
 		}
-		
+
 		File::deleteDirectory($tmpDest);
 		return true;
 
