@@ -26,6 +26,14 @@ For full documentation, visit the [documentation](https://docs.winux.io/).
 > [!NOTE]
 > The quick start guide is coming soon!
 
+Building the application:
+
+```bash
+php winux app:build winux
+sudo cp builds/winux /usr/local/sbin/winux
+sudo chmod 755 /usr/local/sbin/winux
+```
+
 ## Support the development
 **Do you like this project? Support it by donating**
 

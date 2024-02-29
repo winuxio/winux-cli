@@ -2,6 +2,7 @@
 
 namespace App\Classes;
 
+use App\Enums\Frameworks;
 use App\Services\Nginx;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -12,13 +13,15 @@ class Certificate
 {
 	public static function path(string $domain): string
 	{
+
 		return join(DIRECTORY_SEPARATOR, [Nginx::CertPath(), $domain]);
 	}
 
-	public static function destroy(string $domain): bool
+	public static function destroy(string $domain, Frameworks $framework = Frameworks::Laravel): bool
 	{
 		// Delete the certificate directory for this domain
-		$certPath = self::path($domain);
+		// $certPath = self::path($domain);
+		$certPath = $framework->sslPath($domain);
 		if (is_dir($certPath)) {
 			if (!File::deleteDirectory($certPath)) {
 				error('Failed to delete the cert directory for the domain: ' . $domain);
@@ -30,9 +33,10 @@ class Certificate
 		return true;
 	}
 
-	public static function create(string $domain): bool
+	public static function create(string $domain, Frameworks $framework = Frameworks::Laravel): bool
 	{
-		$certPath = self::path($domain);
+		// $certPath = self::path($domain);
+		$certPath = $framework->sslPath($domain);
 		// $keyPath = Nginx::KeyPath();
 
 		// Ensure that the cert path exists
