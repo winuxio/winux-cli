@@ -85,7 +85,8 @@ class Postgres extends Service
 		if (!$this->query($query))
 			return false;
 
-		if ($this->version == PostgresVersion::v15) {
+		// PostgreSQL 15+ requires explicit schema grants
+		if ((int) $this->version->value >= 15) {
 			$query = "GRANT ALL ON SCHEMA public TO $username";
 			if (!$this->query($query))
 				return false;
