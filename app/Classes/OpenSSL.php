@@ -102,6 +102,14 @@ class OpenSSL
 					\$store.Close()
 					POWERSHELL;
 
+		// Ensure the base directory exists
+		if (!is_dir($rootPath)) {
+			if (!mkdir($rootPath, 0755, true)) {
+				error('Failed to create the winux directory.');
+				return false;
+			}
+		}
+
 		// Save the $psScript to a script in the rootPath
 		$psScriptFile = join(DIRECTORY_SEPARATOR, [$rootPath, 'install-root.ps1']);
 		file_put_contents($psScriptFile, $psScript);

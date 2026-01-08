@@ -16,7 +16,7 @@ class Winux
 
 		// Create the .winux directory in the user's home dir
 		if (!is_dir($winuxConfigDir)) {
-			if (!mkdir($winuxConfigDir)) {
+			if (!mkdir($winuxConfigDir, 0755, true)) {
 				throw new \Exception('Failed to create the .winux directory.');
 			}
 			info("Created the $winuxDir directory.");

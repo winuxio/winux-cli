@@ -29,6 +29,9 @@ class InstallRootCA extends Command
      */
     public function handle()
     {
+        // Ensure SSL directories exist and root CA is generated
+        OpenSSL::init();
+
         OpenSSL::installRoot();
     }
 

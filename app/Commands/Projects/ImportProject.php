@@ -3,6 +3,7 @@
 namespace App\Commands\Projects;
 
 use App\Classes\Project;
+use App\Classes\Winux;
 use App\Services\Nginx;
 use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
@@ -33,6 +34,9 @@ class ImportProject extends Command
     public function handle()
     {
         $projectName = $this->argument('projectName');
+
+        Winux::SetupEnvironment();
+
         $project = Project::create($projectName);
 
         info("Importing project '{$project->name}' at '{$project->path}'");
