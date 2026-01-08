@@ -1,18 +1,18 @@
 {
-    "name": "laravel-zero/laravel-zero",
-    "description": "The Laravel Zero Framework.",
-    "keywords": ["framework", "laravel", "laravel zero", "console", "cli"],
-    "homepage": "https://laravel-zero.com",
+    "name": "winuxio/winux-cli",
+    "description": "Simplify local dev ops for Windows/WSL - automates nginx, databases, and environment setup.",
+    "keywords": ["wsl", "windows", "laravel", "nginx", "cli", "devops", "local-development"],
+    "homepage": "https://winux.io",
     "type": "project",
     "license": "MIT",
     "support": {
-        "issues": "https://github.com/laravel-zero/laravel-zero/issues",
-        "source": "https://github.com/laravel-zero/laravel-zero"
+        "issues": "https://github.com/winuxio/winux-cli/issues",
+        "source": "https://github.com/winuxio/winux-cli"
     },
     "authors": [
         {
-            "name": "Nuno Maduro",
-            "email": "enunomaduro@gmail.com"
+            "name": "Chris Reed",
+            "homepage": "https://github.com/chrisreedio"
         }
     ],
     "require": {
@@ -51,5 +51,9 @@
     },
     "minimum-stability": "stable",
     "prefer-stable": true,
-    "bin": ["winux"]
+    "bin": ["winux"],
+    "scripts": {
+        "test": "pest",
+        "lint": "pint"
+    }
 }
