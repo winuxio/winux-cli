@@ -34,7 +34,24 @@ class Postgres extends Service
 	{
 		$username ??= $dbName;
 		$password ??= self::generatePassword();
-		return $this->createDatabase($dbName) && $this->createUser($username, $password) && $this->grant($dbName, $username);
+
+		// Create database if it doesn't exist
+		if (!$this->databaseExists($dbName)) {
+			if (!$this->createDatabase($dbName)) {
+				return false;
+			}
+		}
+
+		// Drop and recreate user to ensure we have the correct password
+		if ($this->userExists($username)) {
+			$this->dropUser($username);
+		}
+
+		if (!$this->createUser($username, $password)) {
+			return false;
+		}
+
+		return $this->grant($dbName, $username);
 	}
 
 	public function dropAll(string $dbName, ?string $username = null): bool
@@ -57,6 +74,24 @@ class Postgres extends Service
 		return \Illuminate\Support\Str::password(16, true, true, false);
 	}
 
+	public function databaseExists(string $databaseName): bool
+	{
+		$process = Process::run([
+			'sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(),
+			'-tAc', "SELECT 1 FROM pg_database WHERE datname = '$databaseName'"
+		]);
+		return trim($process->output()) === '1';
+	}
+
+	public function userExists(string $username): bool
+	{
+		$process = Process::run([
+			'sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(),
+			'-tAc', "SELECT 1 FROM pg_roles WHERE rolname = '$username'"
+		]);
+		return trim($process->output()) === '1';
+	}
+
 	public function createDatabase(string $databaseName): bool
 	{
 		return $this->query("CREATE DATABASE $databaseName");
@@ -70,11 +105,14 @@ class Postgres extends Service
 	public function createUser(string $username, string $password): bool
 	{
 		$query= "CREATE USER $username WITH ENCRYPTED PASSWORD '$password'";
-		return $this->query($query);	
+		return $this->query($query);
 	}
 
 	public function dropUser(string $username): bool
 	{
+		// Revoke privileges first (required for PostgreSQL 15+)
+		$this->query("REVOKE ALL ON SCHEMA public FROM $username");
+
 		$query = "DROP USER $username";
 		return $this->query($query);
 	}
