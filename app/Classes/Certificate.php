@@ -35,9 +35,9 @@ class Certificate
 		$certPath = self::path($domain);
 		// $keyPath = Nginx::KeyPath();
 
-		// Ensure that the cert path exists
+		// Ensure that the cert path exists (including parent directories)
 		if (!is_dir($certPath)) {
-			if (!mkdir($certPath)) {
+			if (!File::makeDirectory($certPath, 0755, true)) {
 				error('Failed to create the cert directory for the domain: ' . $domain);
 				return false;
 			}

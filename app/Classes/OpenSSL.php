@@ -25,7 +25,7 @@ class OpenSSL
 
 		// Create the 'root CA' directory in the .winux basedir
 		if (!is_dir($rootCApath)) {
-			if (!mkdir($rootCApath)) {
+			if (!mkdir($rootCApath, 0755, true)) {
 				error('Failed to create the root authority directory.');
 				return false;
 			}

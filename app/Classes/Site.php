@@ -36,6 +36,12 @@ class Site
 
 	public function enable(): bool
 	{
+		// Ensure the enabled directory exists
+		$directory = dirname($this->linkFile);
+		if (!File::isDirectory($directory)) {
+			File::makeDirectory($directory, 0755, true);
+		}
+
 		// Check if the symbolic link exists
 		if (file_exists($this->linkFile)) {
 			// Check if the symbolic link points to the correct file
@@ -100,16 +106,18 @@ class Site
 	public function save(string $config): bool
 	{
 		note('Saving configuration to ' . $this->configFile);
-		// dump($config);
-	
-		// $process = Process::input($config)->run(['sudo', 'tee', $this->configFile]);
+
+		// Ensure the directory exists
+		$directory = dirname($this->configFile);
+		if (!File::isDirectory($directory)) {
+			File::makeDirectory($directory, 0755, true);
+		}
+
 		if (!file_put_contents($this->configFile, $config)) {
 			error('Failed to save the Nginx config.');
 			return false;
 		}
 		return true;
-
-		// return $process->successful();
 	}
 
 	public function delete(): bool
