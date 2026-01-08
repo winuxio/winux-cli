@@ -97,8 +97,8 @@ Your site will be available at `https://my-awesome-app.local.winux.io`
 | Command | Description |
 |---------|-------------|
 | `project:create <name>` | Create a new project with full stack setup |
-| `project:import` | Import an existing project |
-| `project:delete` | Delete a project and its resources |
+| `project:import <name>` | Import an existing project |
+| `project:delete <name>` | Delete a project and its resources |
 
 ### Service Management
 | Command | Description |
@@ -112,30 +112,30 @@ Your site will be available at `https://my-awesome-app.local.winux.io`
 ### Nginx
 | Command | Description |
 |---------|-------------|
-| `nginx:create` | Create a new nginx site configuration |
-| `nginx:delete` | Delete an nginx site |
-| `nginx:enable` | Enable an nginx site |
-| `nginx:disable` | Disable an nginx site |
+| `nginx:create <projectName>` | Create a new nginx site configuration |
+| `nginx:delete <domain>` | Delete an nginx site |
+| `nginx:enable <domain>` | Enable an nginx site |
+| `nginx:disable <domain>` | Disable an nginx site |
 | `nginx:restart` | Restart nginx |
 
 ### Database (PostgreSQL)
 | Command | Description |
 |---------|-------------|
-| `postgres:create-database` | Create a new PostgreSQL database |
-| `postgres:drop-database` | Drop a PostgreSQL database |
+| `postgres:create <database>` | Create a new PostgreSQL database |
+| `postgres:delete <database>` | Drop a PostgreSQL database |
 | `postgres:restart` | Restart PostgreSQL service |
 
 ### SSL/TLS
 | Command | Description |
 |---------|-------------|
-| `ssl:install-root-ca` | Install Winux root certificate authority |
+| `ssl:root:install` | Install Winux root certificate authority |
 
 ### Other
 | Command | Description |
 |---------|-------------|
-| `php:restart-fpm` | Restart PHP-FPM service |
+| `php:restart` | Restart PHP-FPM service |
 | `redis:restart` | Restart Redis service |
-| `account:login` | Login to your Winux account |
+| `login` | Login to your Winux account |
 
 ## Development
 

@@ -38,7 +38,7 @@ return [
     |
     */
 
-    'font' => \LaravelZero\Framework\Components\Logo\FigletString::DEFAULT_FONT,
+    // 'font' => \LaravelZero\Framework\Components\Logo\FigletString::DEFAULT_FONT, // Removed in Laravel Zero v12
 
     /*
     |--------------------------------------------------------------------------
