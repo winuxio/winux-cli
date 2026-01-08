@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Process;
 use function Laravel\Prompts\alert;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\info;
 use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
@@ -126,11 +127,18 @@ class Project
 
 		// Update the .env file with the new values using regular expressions
 		foreach ($newValues as $key => $value) {
-			$currentEnvContent = preg_replace(
-				'/^' . $key . '=(.*)$/m', // Match the key at the beginning of a line
-				$key . '=' . $value,     // Replace with the new value
-				$currentEnvContent
-			);
+			// Check if the key exists (uncommented) in the .env file
+			if (preg_match('/^' . preg_quote($key, '/') . '=/m', $currentEnvContent)) {
+				// Key exists, replace its value
+				$currentEnvContent = preg_replace(
+					'/^' . preg_quote($key, '/') . '=(.*)$/m',
+					$key . '=' . $value,
+					$currentEnvContent
+				);
+			} else {
+				// Key doesn't exist, append it
+				$currentEnvContent .= "\n" . $key . '=' . $value;
+			}
 		}
 
 		// Write the updated content back to the .env file

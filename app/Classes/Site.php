@@ -96,8 +96,8 @@ class Site
 	{
 		$configTemplate = static::templateData();
 		$config = str_replace(
-			['{{PROJECT_DOMAIN}}', '{{PROJECT_PATH}}', '{{SSL_CERT_PATH}}'],
-			[$this->domain, $this->path, Nginx::CertPath()],
+			['{{PROJECT_DOMAIN}}', '{{PROJECT_PATH}}', '{{SSL_CERT_PATH}}', '{{PHP_VERSION}}'],
+			[$this->domain, $this->path, Nginx::CertPath(), config('winux.php.version')],
 			$configTemplate
 		);
 		return $config;

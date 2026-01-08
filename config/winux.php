@@ -16,6 +16,10 @@ return [
 		'domain' => 'local.winux.io'
 	],
 
+	'php' => [
+		'version' => '8.4',
+	],
+
 	'ssl' => [
 		'root' => [
 			'key' => 'winux_root.key',
