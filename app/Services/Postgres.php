@@ -119,6 +119,10 @@ class Postgres extends Service
 
 	public function grant(string $databaseName, string $username): bool
 	{
+		// Set the user as the database owner
+		if (!$this->query("ALTER DATABASE $databaseName OWNER TO $username"))
+			return false;
+
 		$query = "GRANT ALL PRIVILEGES ON DATABASE $databaseName TO $username";
 		if (!$this->query($query))
 			return false;
