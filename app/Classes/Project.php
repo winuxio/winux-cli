@@ -7,6 +7,7 @@ use App\Enums\Frameworks;
 use App\Enums\GitHubVisibility;
 use App\Enums\Packages;
 use App\Services\Nginx;
+use App\Services\PhpFpm;
 use App\Services\Postgres;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Process;
@@ -26,9 +27,19 @@ class Project
 	public Frameworks $framework = Frameworks::Laravel;
 	public Site $site;
 
+	public string $phpVersion;
+	public string $postgresVersion;
+	/** @var string[] */
+	public array $extraDomains = [];
+
 	protected string $dbName;
-	// protected string $dbUser;
+	protected string $dbUser;
 	protected string $dbPassword;
+
+	/** Import found working credentials in .env, so its DB_* values are left alone */
+	protected bool $keepEnvDatabase = false;
+
+	protected ?bool $envDatabaseWorks = null;
 
 	protected bool $hasRepo = false;
 
@@ -40,141 +51,295 @@ class Project
 	/**
 	 * Create a new project instance in the current directory
 	 */
-	public static function create(string $name): Project
+	public static function create(string $name, ?string $phpVersion = null, ?string $postgresVersion = null): Project
 	{
 		$project = new Project();
 		$project->name = preg_replace('/[^a-zA-Z0-9-_\.]/', '', $name);
-		$project->path = getcwd() . '/' . $name;
+		$project->path = getcwd() . DIRECTORY_SEPARATOR . $name;
+		$project->phpVersion = $phpVersion ?? PhpFpm::defaultVersion();
+		$project->postgresVersion = $postgresVersion ?? $project->detectPostgresVersion() ?? Postgres::defaultVersion();
 
-		// Site
 		$project->site = Site::create($project->getDomain(), $project->path);
 
-		// Database
-		$dbName = $project->name;
-		// Convert hyphens to underscores
-		$dbName = str_replace('-', '_', $dbName);
-		// Convert the db name to a valid database name, (only lowercase letters and underscores)
-		$project->dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
+		// An existing site keeps its PHP version unless one was asked for
+		if ($phpVersion === null && $project->site->exists() && ($sitePhp = $project->site->phpVersion())) {
+			$project->phpVersion = $sitePhp;
+		}
+		$project->dbName = static::databaseName($project->name);
+		$project->dbUser = $project->dbName;
 
 		return $project;
+	}
+
+	/**
+	 * Hyphens become underscores; anything but lowercase letters, digits, and underscores is dropped.
+	 */
+	public static function databaseName(string $name): string
+	{
+		return preg_replace('/[^a-z0-9_]/', '', str_replace('-', '_', strtolower($name)));
+	}
+
+	/**
+	 * For an existing project, the Postgres version whose port matches DB_PORT in its .env.
+	 */
+	protected function detectPostgresVersion(): ?string
+	{
+		$port = $this->envValue('DB_PORT');
+		if ($port === null) {
+			return null;
+		}
+
+		foreach (Postgres::clusters() as $version => $cluster) {
+			if ($cluster['port'] === (int) $port) {
+				return (string) $version;
+			}
+		}
+
+		return null;
+	}
+
+	public function postgres(): Postgres
+	{
+		return Postgres::make($this->postgresVersion);
 	}
 
 	#region Meta-Methods
 	public function setupNginx(): bool
 	{
-		return $this->site->generateAndSave()
-			&& $this->site->enable()
-			&& OpenSSL::init()
-			&& Certificate::create($this->getDomain());
+		if ($this->site->exists()) {
+			return $this->updateExistingSite();
+		}
+
+		return Certificate::create($this->getDomain(), $this->extraDomains)
+			&& $this->site->generateAndSave($this->phpVersion, $this->extraDomains)
+			&& $this->site->enable();
+	}
+
+	/**
+	 * Re-importing a site that already has an nginx config: keep it, and only apply what was asked for.
+	 */
+	protected function updateExistingSite(): bool
+	{
+		info("{$this->getDomain()} already has an nginx config; keeping it.");
+
+		$current = $this->site->phpVersion();
+		if ($current && $current !== $this->phpVersion) {
+			info("Switching it from PHP $current to {$this->phpVersion}.");
+			if (!$this->site->setPhpVersion($this->phpVersion)) {
+				return false;
+			}
+		}
+
+		$newDomains = array_diff($this->extraDomains, $this->site->extraDomains());
+		if ($newDomains) {
+			if (!$this->site->setDomains([...$this->site->domains(), ...$newDomains])) {
+				return false;
+			}
+		} elseif (!is_file(Certificate::certFile($this->getDomain())) && !Certificate::create($this->getDomain(), $this->site->extraDomains())) {
+			return false;
+		}
+
+		return $this->site->enable();
 	}
 
 	public function setupDatabase(): bool
 	{
 		$this->dbPassword = Postgres::generatePassword();
-		return Postgres::make()->createAll($this->dbName, password: $this->dbPassword);
+		return $this->postgres()->createAll($this->dbName, $this->dbUser, $this->dbPassword);
 	}
 
-	// Configure new Project Env
+	/**
+	 * The Postgres connection an existing project's .env points at, if any.
+	 *
+	 * @return array{host: string, port: int, database: string, username: string, password: string}|null
+	 */
+	public function envDatabase(): ?array
+	{
+		if ($this->envValue('DB_CONNECTION') !== 'pgsql' || !($database = $this->envValue('DB_DATABASE'))) {
+			return null;
+		}
+
+		return [
+			'host' => $this->envValue('DB_HOST') ?: '127.0.0.1',
+			'port' => (int) ($this->envValue('DB_PORT') ?: 5432),
+			'database' => $database,
+			'username' => $this->envValue('DB_USERNAME') ?: $database,
+			'password' => $this->envValue('DB_PASSWORD') ?? '',
+		];
+	}
+
+	/**
+	 * Whether the credentials already in .env work, in which case import leaves the database alone.
+	 */
+	public function envDatabaseWorks(): bool
+	{
+		if ($this->envDatabaseWorks !== null) {
+			return $this->envDatabaseWorks;
+		}
+
+		$env = $this->envDatabase();
+
+		return $this->envDatabaseWorks = $env !== null
+			&& Postgres::canConnect($env['host'], $env['port'], $env['database'], $env['username'], $env['password']);
+	}
+
+	/**
+	 * Import's database setup: reuse what .env points at when possible, and only create or change what's missing.
+	 *  - .env credentials work                  -> use them as-is
+	 *  - .env's database exists on this cluster -> keep its name/user; create the user or reset its password
+	 *  - otherwise                              -> create a database and user named after the project
+	 */
+	public function setupImportedDatabase(): bool
+	{
+		$env = $this->envDatabase();
+
+		if ($env && $this->envDatabaseWorks()) {
+			info("Reusing the existing database '{$env['database']}' as '{$env['username']}' (the credentials in .env work).");
+			$this->keepEnvDatabase = true;
+			return true;
+		}
+
+		$postgres = $this->postgres();
+
+		if ($env && $postgres->databaseExists($env['database'])) {
+			$this->dbName = $env['database'];
+			$this->dbUser = $env['username'];
+			info("Using the existing database '{$this->dbName}' on {$postgres->label()}.");
+		}
+
+		$userExists = $postgres->userExists($this->dbUser);
+		if ($userExists) {
+			warning("The Postgres user '{$this->dbUser}' exists, but the credentials in .env don't work for it.");
+			if (!confirm("Reset '{$this->dbUser}''s password and save it to .env?", true, hint: 'Anything else using this user will need the new password.')) {
+				warning('Leaving the database and the DB_* values in .env untouched.');
+				$this->keepEnvDatabase = true;
+				return true;
+			}
+		}
+
+		if (!$postgres->databaseExists($this->dbName)) {
+			info("Creating the database '{$this->dbName}' on {$postgres->label()}.");
+		}
+		if (!$userExists) {
+			info("Creating the user '{$this->dbUser}'.");
+		}
+
+		return $this->setupDatabase();
+	}
+
 	public function initEnv(): bool
 	{
-		$newValues = [
-			'APP_NAME' => "\"$this->name\"",
-			'APP_URL' => '"https://' . $this->getDomain() . '"',
-			'CACHE_DRIVER' => 'redis',
-			'SESSION_DRIVER' => 'redis',
-			'QUEUE_CONNECTION' => 'redis',
-			'DB_CONNECTION' => 'pgsql',
-			'DB_PORT' => Postgres::make()->getPort(),
-			'DB_DATABASE' => "\"{$this->dbName}\"",
-			'DB_USERNAME' => "\"{$this->dbName}\"",
-			'DB_PASSWORD' => "\"{$this->dbPassword}\"",
-		];
-
-		return $this->updateEnv($newValues);
+		return $this->updateEnv($this->envValues());
 	}
 
-	// Configure existing project Env
+	/**
+	 * Import: point APP_URL and the database at winux, but don't clobber an existing app's other settings.
+	 */
 	public function configureEnv(): bool
 	{
-		$newValues = [
-			'APP_NAME' => "\"$this->name\"",
-			'APP_URL' => '"https://' . $this->getDomain() . '"',
-			'CACHE_DRIVER' => 'redis',
-			'SESSION_DRIVER' => 'redis',
-			'QUEUE_CONNECTION' => 'redis',
-			'DB_CONNECTION' => 'pgsql',
-			'DB_PORT' => Postgres::make()->getPort(),
-			'DB_DATABASE' => "\"{$this->dbName}\"",
-			'DB_USERNAME' => "\"{$this->dbName}\"",
-			'DB_PASSWORD' => "\"{$this->dbPassword}\"",
-		];
+		$values = $this->envValues();
+		$overwrite = array_intersect_key($values, array_flip(['APP_URL', 'DB_CONNECTION', 'DB_HOST', 'DB_PORT', 'DB_DATABASE', 'DB_USERNAME', 'DB_PASSWORD']));
+		$fillMissing = array_diff_key($values, $overwrite);
 
-		return $this->updateEnv($newValues);
+		return $this->updateEnv($overwrite) && $this->updateEnv($fillMissing, overwrite: false);
 	}
 
-	private function updateEnv(array $newValues): bool
+	protected function envValues(): array
 	{
-		if (!File::exists($this->path . DIRECTORY_SEPARATOR . '.env')) {
-			// Copy the .env.example to .env
-			if (!File::copy($this->path . DIRECTORY_SEPARATOR . '.env.example', $this->path . DIRECTORY_SEPARATOR . '.env')) {
+		$values = [
+			'APP_NAME' => "\"$this->name\"",
+			'APP_URL' => '"https://' . $this->getDomain() . '"',
+			'CACHE_STORE' => 'redis',
+			'SESSION_DRIVER' => 'redis',
+			'QUEUE_CONNECTION' => 'redis',
+		];
+
+		if ($this->keepEnvDatabase) {
+			return $values;
+		}
+
+		return $values + [
+			'DB_CONNECTION' => 'pgsql',
+			'DB_HOST' => '127.0.0.1',
+			'DB_PORT' => $this->postgres()->getPort(),
+			'DB_DATABASE' => "\"{$this->dbName}\"",
+			'DB_USERNAME' => "\"{$this->dbUser}\"",
+			'DB_PASSWORD' => "\"{$this->dbPassword}\"",
+		];
+	}
+
+	protected function envValue(string $key): ?string
+	{
+		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
+		if (!is_file($envFile)) {
+			return null;
+		}
+
+		return preg_match('/^' . preg_quote($key, '/') . '=(.*)$/m', File::get($envFile), $matches)
+			? trim($matches[1], " \t\"'")
+			: null;
+	}
+
+	private function updateEnv(array $newValues, bool $overwrite = true): bool
+	{
+		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
+
+		if (!File::exists($envFile)) {
+			if (!File::copy($this->path . DIRECTORY_SEPARATOR . '.env.example', $envFile)) {
 				error('Failed to copy the .env.example file to .env');
 				return false;
 			}
 		}
 
-		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
-		$currentEnvContent = file_get_contents($envFile);
+		$contents = static::applyEnvValues(File::get($envFile), $newValues, $overwrite);
 
-		// Update the .env file with the new values using regular expressions
-		foreach ($newValues as $key => $value) {
-			// Check if the key exists (uncommented) in the .env file
-			if (preg_match('/^' . preg_quote($key, '/') . '=/m', $currentEnvContent)) {
-				// Key exists, replace its value
-				$currentEnvContent = preg_replace(
-					'/^' . preg_quote($key, '/') . '=(.*)$/m',
-					$key . '=' . $value,
-					$currentEnvContent
-				);
+		return File::put($envFile, $contents) !== false;
+	}
+
+	/**
+	 * Replaces existing keys (uncommenting them if needed, e.g. Laravel 11+'s "# DB_HOST=")
+	 * and appends any that are missing. With $overwrite off, keys that are already set are left alone.
+	 */
+	public static function applyEnvValues(string $contents, array $values, bool $overwrite = true): string
+	{
+		foreach ($values as $key => $value) {
+			$line = $key . '=' . $value;
+			$quoted = preg_quote($key, '/');
+
+			if (preg_match('/^' . $quoted . '=/m', $contents)) {
+				if (!$overwrite) {
+					continue;
+				}
+				$contents = preg_replace('/^' . $quoted . '=.*$/m', addcslashes($line, '\\$'), $contents);
+			} elseif (preg_match('/^#\s*' . $quoted . '=/m', $contents)) {
+				$contents = preg_replace('/^#\s*' . $quoted . '=.*$/m', addcslashes($line, '\\$'), $contents, 1);
 			} else {
-				// Key doesn't exist, append it
-				$currentEnvContent .= "\n" . $key . '=' . $value;
+				$contents = rtrim($contents, "\n") . "\n" . $line . "\n";
 			}
 		}
 
-		// Write the updated content back to the .env file
-		return file_put_contents($envFile, $currentEnvContent) ? true : false;
+		return $contents;
 	}
 
 	public function initializeGitRepository(): bool
 	{
-		// Init the repo
-		if (Process::path($this->path)->run(['git', 'init'])->failed()) {
+		if (Process::path($this->path)->run(['git', 'init', '-b', 'main'])->failed()) {
 			error('Failed to initialize the git repository.');
 			return false;
 		}
 
 		$this->hasRepo = true;
 
-		$this->gitCommit('Initial commit');
-
-		// Set branch to main
-		if (Process::path($this->path)->run(['git', 'branch', '-M', 'main'])->failed()) {
-			error('Failed to set the git branch to main.');
-			return false;
-		}
-
-		return true;
+		return $this->gitCommit('Initial commit');
 	}
 
 	public function gitCommit(string $message): bool
 	{
-		// Add all the files
 		if (Process::path($this->path)->run(['git', 'add', '.'])->failed()) {
 			error('Failed to add the files to the git repository.');
 			return false;
 		}
 
-		// Commit the files
 		$commit = Process::path($this->path)->run(['git', 'commit', '-m', $message]);
 		if ($commit->failed()) {
 			error('Failed to commit the files to the git repository.');
@@ -188,7 +353,6 @@ class Project
 
 	public function installAdditionalPackages(bool $commit = true): void
 	{
-		// Build list of packages to choose from
 		$packages = collect(Packages::cases())
 			->mapWithKeys(fn ($package) => [$package->value => $package->label()]);
 
@@ -200,35 +364,27 @@ class Project
 
 		collect($extraPackages)->each(function ($packageValue) use ($commit) {
 			$package = Packages::from($packageValue);
-			$package->install($this->path);
-			if ($commit) {
+			$package->install($this->path, $this->phpBinary());
+			if ($commit && $this->hasRepo) {
 				$this->gitCommit("Installed {$package->label()}");
 			}
 		});
 	}
 
-	public function createGitHubRepo(GitHubVisibility $visibility = GitHubVisibility::Private)
+	public function createGitHubRepo(GitHubVisibility $visibility = GitHubVisibility::Private): bool
 	{
-		// Create the repo
 		$createRepoCommand = [
-			'gh',
-			'repo',
-			'create',
-			$this->name,
+			'gh', 'repo', 'create', $this->name,
 			"--{$visibility->value}",
 			'--source=.',
-			'--remote=origin'
+			'--remote=origin',
+			'--push',
 		];
-		if (Process::path($this->path)->run($createRepoCommand)->failed()) {
-			error('Failed to create the GitHub repository.');
-			return false;
-		}
 
-		// Push the repo
-		$push = Process::path($this->path)->run(['git', 'push', '-u', 'origin', 'main']);
-		if ($push->failed()) {
-			alert('Failed to push the git repository to GitHub.');
-			error($push->errorOutput());
+		$process = Process::path($this->path)->timeout(300)->run($createRepoCommand);
+		if ($process->failed()) {
+			alert('Failed to create the GitHub repository.');
+			error($process->errorOutput());
 			return false;
 		}
 
@@ -237,29 +393,18 @@ class Project
 
 	public function destroy(): bool
 	{
-		// Delete the NGINX site for this project
-		// $this->call('nginx:delete', ['domain' => $projectName]);
 		$this->site->disable();
 		$this->site->delete();
-		Nginx::make()->restart();
+		Nginx::make()->reload();
 
 		Certificate::destroy($this->getDomain());
 
-		// and then tear down the database and user
-		// $this->call('postgres:delete', ['database' => $projectName]);
-		$postgres = Postgres::make();
-		$dbName = $this->name;
-		// Convert hyphens to underscores
-		$dbName = str_replace('-', '_', $dbName);
-		// Convert the db name to a valid database name, (only lowercase letters and underscores)
-		$dbName = preg_replace('/[^a-z0-9_]/', '', $dbName);
-		if (!$postgres->dropAll($dbName)) {
+		if (!$this->postgres()->dropAll($this->dbName)) {
 			alert('Failed to drop some (or all) database resources.');
+		} else {
+			info("Dropped all database resources.\n");
 		}
 
-		info("Dropped all database resources.\n");
-
-		// Delete the project directory
 		alert("Answering 'yes' will delete ALL of this project's files. THIS CAN NOT BE UNDONE!");
 		if (confirm("Do you want to delete the project directory at '{$this->path}'?", false)) {
 			if (!File::deleteDirectory($this->path)) {
@@ -279,7 +424,7 @@ class Project
 	{
 		$process = Process::run([$editor->getCommand(), $this->path]);
 		if ($process->failed()) {
-			error('Failed to open the project in VS Code.');
+			error("Failed to open the project in {$editor->getLabel()}.");
 			return false;
 		}
 		return true;
@@ -302,57 +447,34 @@ class Project
 	#region Installers
 	public function installFramework(): bool
 	{
-		switch ($this->framework) {
-			case Frameworks::Laravel:
-				return $this->installLaravel();
-			default:
-				error('Unknown framework: ' . $this->framework->value);
-				return false;
-		}
+		return match ($this->framework) {
+			Frameworks::Laravel => $this->installLaravel(),
+		};
 	}
 
-	private function installLaravelInstaller(): bool
+	/**
+	 * The PHP CLI matching the site's FPM version, so composer resolves dependencies for it.
+	 */
+	public function phpBinary(): string
 	{
-		$process = Process::run(['composer', 'global', 'require', 'laravel/installer']);
-		if ($process->failed()) {
-			error('Failed to install the laravel installer.');
-			return false;
-		}
-
-		return true;
+		$versioned = "/usr/bin/php{$this->phpVersion}";
+		return is_executable($versioned) ? $versioned : 'php';
 	}
 
 	private function installLaravel(): bool
 	{
-		// // Ensure the laravel installer is installed.
-		// $laravelCommand = 'laravel';
-		// $laravelPath = trim(shell_exec("which $laravelCommand"));
-		// alert('Laravel Path: ' . $laravelPath);
-		// if (empty($laravelPath)) {
-		// 	error("'$laravelCommand' command not found.");
-		// 	$this->installLaravelInstaller();
-		// }
+		$composer = trim(Process::run(['sh', '-c', 'command -v composer'])->output());
+		if ($composer === '') {
+			error('Composer was not found on your PATH. See https://getcomposer.org/download/');
+			return false;
+		}
 
-		// // Check if the laravel installer is installed.
-		// $process = Process::run(['laravel', '--version']);
-		// if ($process->failed()) {
-		// 	$this->installLaravelInstaller();
-		// }
-
-		// $process = Process::run(['laravel', 'new', $this->name], function ($type, $buffer) {
-		$process = Process::run(['composer', 'create-project', 'laravel/laravel', $this->name], function ($type, $buffer) {
-			if ($type === 'out') {
-				// $this->line($buffer);
-				echo ($buffer);
-			} else if ($type === 'err') {
-				error($buffer);
-				return false;
+		$process = Process::forever()->run(
+			[$this->phpBinary(), $composer, 'create-project', 'laravel/laravel', $this->name],
+			function ($type, $buffer) {
+				echo $buffer;
 			}
-		});
-
-		// Install optional additional packages
-		// ask to install Filament
-
+		);
 
 		if ($process->failed()) {
 			error('Failed to create the laravel project.');
@@ -362,9 +484,4 @@ class Project
 		return true;
 	}
 	#endregion
-
-	#region Helpers
-
-	#endregion
-
 }

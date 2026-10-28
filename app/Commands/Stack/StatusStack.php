@@ -2,44 +2,32 @@
 
 namespace App\Commands\Stack;
 
-use App\Classes\Winux;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Enums\ServiceType;
 use LaravelZero\Framework\Commands\Command;
+
+use function Laravel\Prompts\table;
 
 class StatusStack extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'service:status';
+	protected $signature = 'service:status {service? : nginx, php, postgres, redis, or mysql (default: the whole stack)}';
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Command description';
+	protected $description = 'Show whether each service is installed and running';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-		Winux::SetupEnvironment();
-    }
+	public function handle(): int
+	{
+		$rows = collect(ServiceType::resolve($this->argument('service')))
+			->map(function ($service) {
+				$installed = $service->isInstalled();
+				return [
+					$service->label(),
+					$installed ? 'yes' : 'no',
+					$installed ? ($service->isActive() ? 'running' : 'stopped') : '-',
+				];
+			})
+			->all();
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		table(['Service', 'Installed', 'Status'], $rows);
+
+		return self::SUCCESS;
+	}
 }

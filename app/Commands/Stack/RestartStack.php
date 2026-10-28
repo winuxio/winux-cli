@@ -3,62 +3,35 @@
 namespace App\Commands\Stack;
 
 use App\Enums\ServiceType;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\{error, info};
 
 class RestartStack extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'service:restart {service?}';
+	protected $signature = 'service:restart
+		{service? : nginx, php, postgres, redis, or mysql (default: the whole stack)}
+		{version? : Only this php/postgres version, e.g. 8.4 or 16}';
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Restart the stack (Nginx, PHP, Postgres/MySQL, Redis, etc.)';
+	protected $description = 'Restart the stack (Nginx, PHP, Postgres, Redis) or a single service';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-		$serviceName = $this->argument('service');
-		$services = ServiceType::services();
-
-		if ($serviceName !== null) {
-			/** @var Service $service */
-			$service = $services[$serviceName];
-			$service::make()->restart()
-				? info("$serviceName restarted successfully!")
-				: error("Failed to restart $serviceName.");
-			
-			return Command::SUCCESS;
-		} 
-
-		foreach ($services as $service) {
-			$service::make()->restart();		
+	public function handle(): int
+	{
+		$service = $this->argument('service');
+		if ($service !== null && !ServiceType::tryFrom($service)) {
+			error("Unknown service '$service'. Choose from: " . implode(', ', ServiceType::values()));
+			return self::FAILURE;
 		}
-		info('Stack restarted successfully!');
-		return Command::SUCCESS;
-    }
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		$failed = false;
+		foreach (ServiceType::resolve($service, $this->argument('version')) as $instance) {
+			if ($instance->restart()) {
+				info("{$instance->label()} restarted.");
+			} else {
+				$failed = true;
+			}
+		}
+
+		return $failed ? self::FAILURE : self::SUCCESS;
+	}
 }

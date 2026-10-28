@@ -2,52 +2,121 @@
 
 namespace App\Services;
 
-use App\Enums\Versions\PhpVersion;
-use Illuminate\Support\Facades\Process;
-
-use function Laravel\Prompts\{alert, error};
+use App\Classes\Apt;
+use App\Classes\AptRepository;
+use App\Classes\Settings;
 
 class PhpFpm extends Service
 {
+	public string $version;
 
-	protected array $installedVersions = [];
+	public function __construct(?string $version = null)
+	{
+		$this->version = $version ?? static::defaultVersion();
+
+		if (!static::isValidVersion($this->version)) {
+			throw new \InvalidArgumentException("Invalid PHP version '{$this->version}'. Expected something like 8.4.");
+		}
+	}
+
+	public static function make(?string $version = null): static
+	{
+		return new static($version);
+	}
+
+	public static function instances(): array
+	{
+		$versions = static::installedVersions() ?: [static::defaultVersion()];
+		return array_map(fn ($version) => static::make($version), $versions);
+	}
 
 	protected function serviceName(): string
 	{
-		return 'php' . $this->version->value . '-fpm';
+		return "php{$this->version}-fpm";
 	}
 
-	public PhpVersion $version = PhpVersion::v8_1;
-
-	public function __construct()
+	public function label(): string
 	{
-		$this->checkVersions();
-		// Set the version to the last installed version
-		$this->version = PhpVersion::from(end($this->installedVersions));
-		// dump('Latest PHP Version: ' . $this->version->value);
-		// dd($this->installedVersions);
+		return "PHP {$this->version} FPM";
 	}
 
-	public function checkVersions(): void
+	public function socket(): string
 	{
-		// Run this: find /etc/init.d -name 'php*fpm' -exec basename {} \;
-		$process = Process::run('find /etc/init.d -name \'php*fpm\' -exec basename {} \\;');
+		return "/run/php/php{$this->version}-fpm.sock";
+	}
 
-		if ($process->failed()) {
-			alert('Failed to get installed PHP versions.');
-			error($process->errorOutput());
-			return;
+	protected function packages(): array
+	{
+		return [
+			"php{$this->version}-fpm",
+			...array_map(fn ($ext) => "php{$this->version}-{$ext}", config('winux.php.extensions', [])),
+		];
+	}
+
+	public function isInstalled(): bool
+	{
+		return in_array($this->version, static::installedVersions(), true);
+	}
+
+	protected function preInstall(): bool
+	{
+		return AptRepository::ensurePhp();
+	}
+
+	public static function isValidVersion(string $version): bool
+	{
+		return (bool) preg_match('/^\d+\.\d+$/', $version);
+	}
+
+	/**
+	 * The user's chosen default, falling back to the newest installed version.
+	 */
+	public static function defaultVersion(): string
+	{
+		$installed = static::installedVersions();
+		$preferred = Settings::phpVersion();
+
+		if (empty($installed) || in_array($preferred, $installed, true)) {
+			return $preferred;
 		}
-		$installedVersions = $process->output();
-		$installedVersions = explode("\n", $installedVersions);
-		$installedVersions = array_filter($installedVersions);
-		// dd($installedVersions);
-		$this->installedVersions = collect($installedVersions)->map(function ($version) {
-			// Use Regex to grab the version number
-			preg_match('/php(\d+\.\d+)/', $version, $matches);
-			// $this->installedVersions[PhpVersion::from($matches[1])->value] = $version;
-			// return [PhpVersion::from($matches[1])->value => $version];
-			return $matches[1];
-		})->all();
+
+		return end($installed);
+	}
+
+	/**
+	 * PHP versions with FPM installed, sorted ascending.
+	 *
+	 * @return string[]
+	 */
+	public static function installedVersions(): array
+	{
+		$versions = collect(glob(config('winux.php.root') . '/*/fpm/php-fpm.conf') ?: [])
+			->map(fn ($path) => basename(dirname($path, 2)))
+			->filter(fn ($version) => static::isValidVersion($version))
+			->all();
+
+		return static::sortVersions($versions);
+	}
+
+	/**
+	 * PHP versions offered by the configured apt repositories, sorted ascending.
+	 *
+	 * @return string[]
+	 */
+	public static function availableVersions(): array
+	{
+		$versions = collect(Apt::search('^php[0-9]+\.[0-9]+-fpm$'))
+			->map(fn ($package) => preg_replace('/^php([0-9]+\.[0-9]+)-fpm$/', '$1', $package))
+			->filter(fn ($version) => version_compare($version, config('winux.php.minimum'), '>='))
+			->all();
+
+		return static::sortVersions($versions);
+	}
+
+	public static function sortVersions(array $versions): array
+	{
+		$versions = array_values(array_unique($versions));
+		usort($versions, 'version_compare');
+		return $versions;
 	}
 }

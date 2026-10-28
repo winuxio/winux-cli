@@ -63,26 +63,13 @@ return [
         Illuminate\Console\Scheduling\ScheduleFinishCommand::class,
         Illuminate\Foundation\Console\VendorPublishCommand::class,
         LaravelZero\Framework\Commands\StubPublishCommand::class,
-		\App\Commands\InspireCommand::class,
 		\App\Commands\LocalInstall::class,
-
-		// App Commands
-		\App\Commands\Nginx\CreateNginxSite::class,
-		\App\Commands\Nginx\DeleteNginxSite::class,
-		\App\Commands\Nginx\DisableNginxSite::class,
-		\App\Commands\Nginx\EnableNginxSite::class,
-		\App\Commands\Nginx\RestartNginx::class,
-
-		\App\Commands\SSL\InstallRootCA::class,
-
-		\App\Commands\Postgres\CreateDatabase::class,
-		\App\Commands\Postgres\DropDatabase::class,
-		\App\Commands\Postgres\RestartPostgres::class,
-
-		\App\Commands\Php\RestartPhpFpm::class,
-
-		\App\Commands\Redis\RestartRedis::class,
-		
+		\Saloon\Laravel\Console\Commands\MakeAuthenticator::class,
+		\Saloon\Laravel\Console\Commands\MakeConnector::class,
+		\Saloon\Laravel\Console\Commands\ListCommand::class,
+		\Saloon\Laravel\Console\Commands\MakePlugin::class,
+		\Saloon\Laravel\Console\Commands\MakeRequest::class,
+		\Saloon\Laravel\Console\Commands\MakeResponse::class,
     ],
 
     /*

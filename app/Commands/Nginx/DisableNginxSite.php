@@ -2,38 +2,32 @@
 
 namespace App\Commands\Nginx;
 
-use App\Classes\Site;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Commands\Concerns\ResolvesSite;
+use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\info;
 
 class DisableNginxSite extends Command
 {
-	protected $signature = 'nginx:disable {domain}';
-	protected $description = 'Disable an Nginx site by removing the symbolic link in sites-enabled';
+	use ResolvesSite;
 
-	public function handle(): mixed
+	protected $signature = 'nginx:disable {domain? : Site name or domain (defaults to the project in the current directory)}';
+
+	protected $description = 'Disable an nginx site';
+
+	public function handle(): int
 	{
-		$domain = $this->argument('domain');
-
-		if (Site::make($domain)->disable()) {
-			info('Site disabled successfully!');
-			return 0;
-		} else {
-			error('Failed to disable the site.');
-			return 1;
+		$site = $this->resolveSite($this->argument('domain'));
+		if (!$site || !$site->disable()) {
+			return self::FAILURE;
 		}
-	}
 
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
+		if (!Nginx::make()->reload()) {
+			return self::FAILURE;
+		}
+
+		info("Disabled {$site->domain}.");
+		return self::SUCCESS;
 	}
 }

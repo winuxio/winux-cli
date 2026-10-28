@@ -3,64 +3,35 @@
 namespace App\Commands\Stack;
 
 use App\Enums\ServiceType;
-use App\Services\Service;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\error;
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\{error, info};
 
 class StartStack extends Command
 {
-	/**
-	 * The signature of the command.
-	 *
-	 * @var string
-	 */
-	protected $signature = 'service:start {service?}';
+	protected $signature = 'service:start
+		{service? : nginx, php, postgres, redis, or mysql (default: the whole stack)}
+		{version? : Only this php/postgres version, e.g. 8.4 or 16}';
 
-	/**
-	 * The description of the command.
-	 *
-	 * @var string
-	 */
-	protected $description = 'Start the stack (Nginx, PHP, Postgres, Redis, etc.)';
+	protected $description = 'Start the stack (Nginx, PHP, Postgres, Redis) or a single service';
 
-	/**
-	 * Execute the console command.
-	 *
-	 * @return mixed
-	 */
-	public function handle()
+	public function handle(): int
 	{
-		$serviceName = $this->argument('service');
-		$services = ServiceType::services();
-
-		if ($serviceName !== null) {
-			/** @var Service $service */
-			$service = $services[$serviceName];
-			$service::make()->start()
-				? info("$serviceName started successfully!")
-				: error("Failed to start $serviceName.");
-
-			return Command::SUCCESS;
+		$service = $this->argument('service');
+		if ($service !== null && !ServiceType::tryFrom($service)) {
+			error("Unknown service '$service'. Choose from: " . implode(', ', ServiceType::values()));
+			return self::FAILURE;
 		}
 
-		foreach ($services as $service) {
-			$service::make()->start();
+		$failed = false;
+		foreach (ServiceType::resolve($service, $this->argument('version')) as $instance) {
+			if ($instance->start()) {
+				info("{$instance->label()} started.");
+			} else {
+				$failed = true;
+			}
 		}
-		info('Stack started successfully!');
-		return Command::SUCCESS;
-	}
 
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
+		return $failed ? self::FAILURE : self::SUCCESS;
 	}
 }

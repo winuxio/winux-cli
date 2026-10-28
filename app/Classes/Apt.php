@@ -8,9 +8,9 @@ use function Laravel\Prompts\{alert, info, error};
 
 class Apt
 {
-	public static function update()
+	public static function update(): bool
 	{
-		$process = Process::run(['sudo', 'apt', 'update']);
+		$process = Process::forever()->run(['sudo', 'apt-get', 'update']);
 		if ($process->failed()) {
 			alert('Failed to update the package list.');
 			error($process->errorOutput());
@@ -22,16 +22,41 @@ class Apt
 
 	public static function install(string|array $packages): bool
 	{
-		if (is_array($packages)) {
-			$packages = join(' ', $packages);
-		}
-		$process = Process::run(['sudo', 'apt', 'install', '-y', $packages]);
+		$packages = (array) $packages;
+		$list = implode(' ', $packages);
+
+		$process = Process::forever()
+			->run(['sudo', 'DEBIAN_FRONTEND=noninteractive', 'apt-get', 'install', '-y', ...$packages]);
+
 		if ($process->failed()) {
-			alert("Failed to install the packages: $packages.");
+			alert("Failed to install the packages: $list.");
 			error($process->errorOutput());
 			return false;
 		}
-		info("Installed the packages: $packages.");
+		info("Installed the packages: $list.");
 		return true;
+	}
+
+	public static function isInstalled(string $package): bool
+	{
+		$process = Process::run(['dpkg-query', '-W', '-f=${Status}', $package]);
+		return $process->successful() && str_contains($process->output(), 'install ok installed');
+	}
+
+	/**
+	 * Returns the package names matching a regex, e.g. '^php[0-9.]+-fpm$'
+	 */
+	public static function search(string $pattern): array
+	{
+		$process = Process::run(['apt-cache', 'pkgnames']);
+		if ($process->failed()) {
+			return [];
+		}
+
+		return collect(explode("\n", $process->output()))
+			->map(fn ($line) => trim($line))
+			->filter(fn ($line) => $line !== '' && preg_match('/' . $pattern . '/', $line))
+			->values()
+			->all();
 	}
 }

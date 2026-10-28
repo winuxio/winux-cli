@@ -3,42 +3,30 @@
 namespace App\Commands\Nginx;
 
 use App\Services\Nginx;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\{error, info};
 
 class RestartNginx extends Command
 {
-    protected $signature = 'nginx:restart';
-    protected $description = 'Restart Nginx';
+	protected $signature = 'nginx:restart';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-		$nginx = new Nginx();
-        if (!$nginx->restart()) {
-            error('Failed to restart Nginx.');
-            return Command::FAILURE;
-        }
+	protected $description = 'Validate the config and restart Nginx';
 
-        info('Nginx restarted successfully!');
-        return Command::SUCCESS;
-    }
+	public function handle(): int
+	{
+		$nginx = Nginx::make();
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		if (($result = $nginx->test()) !== true) {
+			error("Nginx config is invalid; not restarting.\n$result");
+			return self::FAILURE;
+		}
 
+		if (!$nginx->restart()) {
+			return self::FAILURE;
+		}
+
+		info('Nginx restarted successfully!');
+		return self::SUCCESS;
+	}
 }

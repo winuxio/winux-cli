@@ -1,0 +1,42 @@
+name: Release
+
+on:
+  push:
+    tags: [ 'v*' ]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          extensions: mbstring, xml, ctype, json, openssl
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
+
+      - name: Run tests
+        run: composer test
+
+      - name: Build PHAR
+        run: |
+          composer install --prefer-dist --no-progress --no-dev
+          php winux app:build --build-version=${GITHUB_REF_NAME}
+
+      - name: Smoke test
+        run: php builds/winux --version
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: builds/winux
+          generate_release_notes: true

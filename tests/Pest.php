@@ -1,45 +1,54 @@
 <?php
 
-/*
-|--------------------------------------------------------------------------
-| Test Case
-|--------------------------------------------------------------------------
-|
-| The closure you provide to your test functions is always bound to a specific PHPUnit test
-| case class. By default, that class is "PHPUnit\Framework\TestCase". Of course, you may
-| need to change it using the "uses()" function to bind a different classes or traits.
-|
-*/
+use Illuminate\Support\Facades\File;
 
-uses(Tests\TestCase::class)->in('Feature');
+uses(Tests\TestCase::class)->in('Feature', 'Unit');
 
-/*
-|--------------------------------------------------------------------------
-| Expectations
-|--------------------------------------------------------------------------
-|
-| When you're writing tests, you often need to check that values meet certain conditions. The
-| "expect()" function gives you access to a set of "expectations" methods that you can use
-| to assert different things. Of course, you may extend the Expectation API at any time.
-|
-*/
-
-expect()->extend('toBeOne', function () {
-    return $this->toBe(1);
-});
-
-/*
-|--------------------------------------------------------------------------
-| Functions
-|--------------------------------------------------------------------------
-|
-| While Pest is very powerful out-of-the-box, you may have some testing code specific to your
-| project that you don't want to repeat in every file. Here you can also expose helpers as
-| global functions to help you to reduce the number of lines of code in your test files.
-|
-*/
-
-function something(): void
+/**
+ * Points winux at a throwaway ~/.winux and /etc/php so tests never touch the real machine.
+ * Returns the sandbox root.
+ */
+function winuxSandbox(array $phpVersions = ['8.3', '8.4']): string
 {
-    // ..
+	$root = sys_get_temp_dir() . '/winux-test-' . bin2hex(random_bytes(6));
+	$base = "$root/.winux";
+
+	File::ensureDirectoryExists("$base/sites/available");
+	File::ensureDirectoryExists("$base/sites/enabled");
+	foreach ($phpVersions as $version) {
+		File::ensureDirectoryExists("$root/etc/php/$version/fpm");
+		File::put("$root/etc/php/$version/fpm/php-fpm.conf", '');
+	}
+
+	config([
+		'winux.paths.home' => $root,
+		'winux.paths.base' => $base,
+		'winux.php.root' => "$root/etc/php",
+	]);
+
+	test()->sandboxRoot = $root;
+
+	return $root;
+}
+
+/**
+ * Installs the legacy (pre-modernization, hand-edited) fixture as an enabled site.
+ */
+function legacySite(string $root, string $name = 'legacy-app'): string
+{
+	$domain = "$name.local.winux.io";
+	$base = "$root/.winux";
+	$project = "$root/projects/$name";
+	File::ensureDirectoryExists("$project/public");
+
+	$contents = str_replace(
+		['{{BASE}}', '{{PROJECT}}', 'legacy-app'],
+		[$base, $project, $name],
+		File::get(__DIR__ . '/Fixtures/legacy-site.conf')
+	);
+
+	File::put("$base/sites/available/$domain", $contents);
+	symlink("$base/sites/available/$domain", "$base/sites/enabled/$domain");
+
+	return $domain;
 }

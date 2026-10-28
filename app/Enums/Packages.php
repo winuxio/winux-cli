@@ -4,13 +4,8 @@ namespace App\Enums;
 
 use Illuminate\Support\Facades\Process;
 
-// use function Laravel\Prompts\alert;
-// use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
-
-// use function Laravel\Prompts\note;
-// use function Laravel\Prompts\warning;
 
 enum Packages: string
 {
@@ -23,23 +18,26 @@ enum Packages: string
 		};
 	}
 
-	public function install(string $path): bool
+	public function install(string $path, string $php = 'php'): bool
 	{
 		return match ($this) {
-			self::Filament => $this->installFilament($path),
+			self::Filament => $this->installFilament($path, $php),
 		};
 	}
 
-	protected static function installFilament(string $path): bool
+	protected function installFilament(string $path, string $php): bool
 	{
-		$process = Process::path($path)->run(['composer', 'require', 'filament/filament:^3.0-stable', '-W']);
+		$composer = trim(Process::run(['sh', '-c', 'command -v composer'])->output()) ?: 'composer';
+
+		// No constraint: composer picks the newest Filament compatible with the project
+		$process = Process::path($path)->forever()->run([$php, $composer, 'require', 'filament/filament', '-W']);
 		if ($process->failed()) {
 			error('Failed to require Filament via Composer.');
 			warning($process->errorOutput());
 			return false;
 		}
 
-		$process = Process::path($path)->run(['php', 'artisan', 'filament:install', '--panels']);
+		$process = Process::path($path)->forever()->run([$php, 'artisan', 'filament:install', '--panels', '--no-interaction']);
 		if ($process->failed()) {
 			error('Failed to install Filament.');
 			warning($process->errorOutput());

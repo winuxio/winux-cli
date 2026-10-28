@@ -2,7 +2,6 @@
 
 namespace App\Commands;
 
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Process\Exceptions\ProcessFailedException;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
@@ -47,7 +46,7 @@ class LocalInstall extends Command
 		// return 0;
 
 		alert('Building the application... Please wait...');
-		$build = Process::run($buildParts, function ($type, $buffer) {
+		$build = Process::forever()->run($buildParts, function ($type, $buffer) {
 			if ($type === 'out') {
 				// $this->line($buffer);
 				$this->output->write($buffer);
@@ -63,35 +62,16 @@ class LocalInstall extends Command
 		info('Application built successfully!');
 
 		// return 0;
-		// Copy the binary to /usr/sbin/winux
-		$process = Process::run(['sudo', 'cp', 'builds/winux', '/usr/sbin/winux']);
+		// Copy the binary to /usr/local/bin/winux
+		$process = Process::run(['sudo', 'install', '-m', '0755', 'builds/winux', '/usr/local/bin/winux']);
 		if ($process->failed()) {
-			error('Failed to copy the binary to /usr/sbin/winux.');
+			error('Failed to copy the binary to /usr/local/bin/winux.');
 			throw new ProcessFailedException($process);
 		}
 
-		info('Copied the binary to /usr/sbin/winux successfully!');
+		info('Copied the binary to /usr/local/bin/winux successfully!');
 
-		// Set the permissions
-		$process = Process::run(['sudo', 'chmod', '+x', '/usr/sbin/winux']);
-		if ($process->failed()) {
-			error('Failed to set permissions.');
-			throw new ProcessFailedException($process);
-		}
-
-		info('Permissions configured.');
 		$this->line('======================================');
 		info('Winux installed locally successfully!');
-	}
-
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
 	}
 }

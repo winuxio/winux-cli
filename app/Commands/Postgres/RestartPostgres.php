@@ -2,51 +2,32 @@
 
 namespace App\Commands\Postgres;
 
-use App\Enums\Versions\PostgresVersion;
 use App\Services\Postgres;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\{error, info};
 
 class RestartPostgres extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'postgres:restart';
+	protected $signature = 'postgres:restart {version? : Only restart this version (default: all installed)}';
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Restart Postgres';
+	protected $description = 'Restart Postgres';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-		// $version = $this->option('db_version') ?: '13';
-		$version = PostgresVersion::v13;
-		info("Restarting Postgres {$version->value}...");
-		$postgres = new Postgres(PostgresVersion::v13);	
-		$postgres->restart();	
-    }
+	public function handle(): int
+	{
+		$version = $this->argument('version');
+		$services = $version ? [Postgres::make($version)] : Postgres::instances();
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		$failed = false;
+		foreach ($services as $postgres) {
+			if ($postgres->restart()) {
+				info("{$postgres->label()} restarted.");
+			} else {
+				error("Failed to restart {$postgres->label()}.");
+				$failed = true;
+			}
+		}
+
+		return $failed ? self::FAILURE : self::SUCCESS;
+	}
 }
