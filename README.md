@@ -176,6 +176,8 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 2. release-please keeps a `chore(main): release x.y.z` PR open with the version bump and `CHANGELOG.md`, updated as PRs land.
 3. Merging that PR tags the release. CI then runs the tests, builds the PHAR, and attaches `winux`, `winux.sha256` and a provenance attestation. Users get the update notice within a day.
 
+release-please opens its PR with the `RELEASE_PLEASE_TOKEN` repository secret: a [fine-grained token](https://github.com/settings/personal-access-tokens/new) whose resource owner is `winuxio`, limited to this repository, with **Contents** and **Pull requests** set to read and write. It falls back to the built-in token, which only works if the org allows Actions to create pull requests (and CI won't run on the release PR).
+
 Prereleases (the beta channel) are cut by hand from any commit:
 
 ```bash
