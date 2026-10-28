@@ -2,7 +2,10 @@
 
 namespace App\Providers;
 
+use App\Classes\UpdateCheck;
 use Illuminate\Console\Application as Artisan;
+use Illuminate\Console\Events\CommandFinished;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Saloon\Laravel\SaloonServiceProvider;
 
@@ -13,7 +16,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        Event::listen(CommandFinished::class, [UpdateCheck::class, 'afterCommand']);
     }
 
     /**

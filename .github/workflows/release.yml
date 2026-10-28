@@ -1,18 +1,49 @@
 name: Release
 
+# Stable releases: release-please keeps a "chore(main): release x.y.z" PR open, built from
+# conventional commits on main. Merging it tags the release, and the publish job attaches the PHAR.
+#
+# Prereleases are cut by hand and go to the beta channel:
+#   git tag v1.2.0-beta.1 && git push origin v1.2.0-beta.1
+
 on:
   push:
-    tags: [ 'v*' ]
+    branches: [ main ]
+    tags: [ 'v*-*' ]
 
 permissions:
   contents: write
+  pull-requests: write
+  id-token: write
+  attestations: write
 
 jobs:
-  release:
+  release-please:
+    if: github.ref_type == 'branch'
     runs-on: ubuntu-latest
+    outputs:
+      created: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
+  publish:
+    needs: release-please
+    if: ${{ !cancelled() && (needs.release-please.outputs.created == 'true' || github.ref_type == 'tag') }}
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.release-please.outputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ github.token }}
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -30,13 +61,25 @@ jobs:
       - name: Build PHAR
         run: |
           composer install --prefer-dist --no-progress --no-dev
-          php winux app:build --build-version=${GITHUB_REF_NAME}
+          php winux app:build --build-version="$TAG"
 
       - name: Smoke test
-        run: php builds/winux --version
+        run: php builds/winux --version --no-ansi | grep -F "$TAG"
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - name: Checksum
+        working-directory: builds
+        run: sha256sum winux | tee winux.sha256
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
         with:
-          files: builds/winux
-          generate_release_notes: true
+          subject-path: builds/winux
+
+      - name: Publish
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" builds/winux builds/winux.sha256 --clobber
+          else
+            gh release create "$TAG" builds/winux builds/winux.sha256 \
+              --verify-tag --prerelease --generate-notes --title "$TAG"
+          fi

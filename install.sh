@@ -6,7 +6,7 @@
 #
 # Environment overrides:
 #   WINUX_PHP=8.4          PHP version for the winux CLI itself (and the default for new sites)
-#   WINUX_VERSION=latest   Release tag to install, e.g. v2.0.0
+#   WINUX_VERSION=latest   Release tag to install, e.g. v1.0.0
 #   WINUX_BIN=/usr/local/bin/winux
 #
 set -euo pipefail
@@ -89,24 +89,36 @@ if ! command -v composer >/dev/null; then
 fi
 
 if [ "$WINUX_VERSION" = "latest" ]; then
-	url="https://github.com/${REPO}/releases/latest/download/winux"
+	base_url="https://github.com/${REPO}/releases/latest/download"
 else
-	url="https://github.com/${REPO}/releases/download/${WINUX_VERSION}/winux"
+	base_url="https://github.com/${REPO}/releases/download/${WINUX_VERSION}"
+fi
+
+if [ -x "$WINUX_BIN" ]; then
+	info "Replacing the installed winux. Next time, just run: winux self-update"
 fi
 
 info "Downloading winux (${WINUX_VERSION})..."
-tmp_bin="$(mktemp)"
-curl -fsSLo "$tmp_bin" "$url" || fail "Couldn't download $url"
-php "$tmp_bin" --version >/dev/null || fail "The downloaded winux binary failed to run."
-sudo install -m 0755 "$tmp_bin" "$WINUX_BIN"
-rm -f "$tmp_bin"
+tmp_dir="$(mktemp -d)"
+trap 'rm -rf "$tmp_dir"' EXIT
+curl -fsSLo "$tmp_dir/winux" "$base_url/winux" || fail "Couldn't download $base_url/winux"
+
+if curl -fsSLo "$tmp_dir/winux.sha256" "$base_url/winux.sha256" 2>/dev/null; then
+	(cd "$tmp_dir" && sha256sum --check --status winux.sha256) || fail "Checksum mismatch: the download may be corrupt. Try again."
+	info "Checksum verified"
+else
+	warn "This release has no checksum; skipping verification."
+fi
+
+php "$tmp_dir/winux" --version >/dev/null || fail "The downloaded winux binary failed to run."
+sudo install -m 0755 "$tmp_dir/winux" "$WINUX_BIN"
 
 # Earlier versions installed to /usr/sbin
 if [ -f /usr/sbin/winux ] && [ "$WINUX_BIN" != /usr/sbin/winux ]; then
 	warn "An older winux exists at /usr/sbin/winux. Remove it with: sudo rm /usr/sbin/winux"
 fi
 
-info "Installed $("$WINUX_BIN" --version 2>/dev/null | head -n1) to $WINUX_BIN"
+info "Installed winux $("$WINUX_BIN" --version --no-ansi 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9][^ ]*' | head -n1) to $WINUX_BIN"
 echo
 echo "Next, set up your stack (nginx, PHP, Postgres, Redis, SSL):"
 echo

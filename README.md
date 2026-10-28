@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/winuxio/winux-cli/main/install.sh |
 winux setup
 ```
 
-`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin`. Set `WINUX_PHP=8.3` or `WINUX_VERSION=v2.0.0` to override the defaults.
+`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin` after checking its checksum. Set `WINUX_PHP=8.3` or `WINUX_VERSION=v1.0.0` to override the defaults.
 
 `winux setup` then asks which PHP versions and which Postgres version you want, and installs:
 
@@ -38,7 +38,29 @@ winux setup
 
 Run `winux doctor` at any time to check that everything is healthy.
 
-Update later with `winux self-update`.
+## Updating
+
+winux checks for a new release once a day, in the background, and mentions it after your next command:
+
+```
+  winux 1.2.0 is available (you have 1.1.0). Run winux self-update to update.
+```
+
+```bash
+winux self-update                 # update to the latest release, showing what's new
+winux self-update --check         # just show what an update would bring
+winux self-update 1.1.0           # install a specific version (older ones too)
+winux self-update --rollback      # go back to the version you had before the last update
+winux self-update --channel=beta  # opt into prereleases (--channel=stable to go back)
+```
+
+Every download is checked against the release's SHA-256 checksum and must run and report the expected version before it replaces the installed binary. Releases also carry [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations), so you can confirm a binary was built by this repository's CI:
+
+```bash
+gh attestation verify "$(command -v winux)" --repo winuxio/winux-cli
+```
+
+To turn off the daily check, run with `WINUX_NO_UPDATE_CHECK=1` or set `"update": {"check": false}` in `~/.winux/config.json`. It's also skipped in CI and when output isn't a terminal.
 
 ## Projects
 
@@ -117,7 +139,9 @@ winux ssl:root:install            # (re)trust the root CA in Linux and Windows
 
 ```
 ~/.winux/
-├── config.json       # php.default, postgres.default
+├── config.json       # php.default, postgres.default, update.channel, update.check
+├── update-check.json # result of the last daily update check
+├── winux.previous    # the binary before the last self-update (for --rollback)
 ├── sites/
 │   ├── available/    # nginx site configs, named after the primary domain
 │   └── enabled/      # symlinks to enabled sites (included from /etc/nginx/nginx.conf)
@@ -127,9 +151,10 @@ winux ssl:root:install            # (re)trust the root CA in Linux and Windows
 └── backups/          # configs saved before winux edits them
 ```
 
-## Upgrading from 1.x
+## Upgrading from 0.x
 
 - Your sites, certificates, and root CA are all kept. Run `winux doctor` to check everything.
+- 0.x can't update itself: install 1.x once with `install.sh` (above), then use `winux self-update` from then on.
 - Older versions installed to `/usr/sbin/winux`. Remove that copy with `sudo rm /usr/sbin/winux`.
 - The default site template now redirects HTTP to `https://$host`, so extra domains redirect to themselves. Older sites are updated the first time you add a domain to them.
 
@@ -143,7 +168,19 @@ php winux app:build        # build the PHAR into builds/winux
 php winux app:install:local
 ```
 
-Releases are built by GitHub Actions when a `v*` tag is pushed.
+### Releasing
+
+Releases are automated with [release-please](https://github.com/googleapis/release-please):
+
+1. PRs are squash-merged, and their titles must be [conventional commits](https://www.conventionalcommits.org/) (checked by CI): `feat: ...` for features, `fix: ...` for bug fixes, `feat!: ...` for breaking changes. `docs:`, `chore:`, `refactor:`, `test:` and `ci:` don't trigger a release.
+2. release-please keeps a `chore(main): release x.y.z` PR open with the version bump and `CHANGELOG.md`, updated as PRs land.
+3. Merging that PR tags the release. CI then runs the tests, builds the PHAR, and attaches `winux`, `winux.sha256` and a provenance attestation. Users get the update notice within a day.
+
+Prereleases (the beta channel) are cut by hand from any commit:
+
+```bash
+git tag v1.2.0-beta.1 && git push origin v1.2.0-beta.1
+```
 
 ## Support the development
 

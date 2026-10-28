@@ -5,7 +5,9 @@ namespace App\Commands;
 use App\Classes\AptRepository;
 use App\Classes\Mkcert;
 use App\Classes\Platform;
+use App\Classes\Releases;
 use App\Classes\Site;
+use App\Classes\UpdateCheck;
 use App\Services\Nginx;
 use App\Services\PhpFpm;
 use App\Services\Postgres;
@@ -25,6 +27,9 @@ class Doctor extends Command
 
 	public function handle(): int
 	{
+		$available = UpdateCheck::available();
+		$this->check('winux', $available === null, (Releases::current() ?? config('app.version')) . ($available ? " ($available available)" : ''), 'Run `winux self-update`.');
+
 		$this->check('Supported OS', Platform::isSupported(), Platform::prettyName(), 'winux supports Ubuntu and Debian.');
 		$this->check('WSL', true, Platform::isWsl() ? 'yes' : 'no (native Linux)');
 		$this->check(

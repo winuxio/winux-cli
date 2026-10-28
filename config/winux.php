@@ -52,4 +52,7 @@ return [
 		'repository' => 'winuxio/winux-cli',
 		'asset' => 'winux',
 	],
+
+	// The binary self-update replaces; null means the running PHAR
+	'binary' => null,
 ];

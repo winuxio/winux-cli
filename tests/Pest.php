@@ -52,3 +52,22 @@ function legacySite(string $root, string $name = 'legacy-app'): string
 
 	return $domain;
 }
+
+/**
+ * A GitHub releases API payload. Each release: [tag, prerelease, notes, withBinary = true].
+ * Asset ids are derived from the position: binary 100 + i, checksum 200 + i.
+ */
+function githubReleases(array $releases): array
+{
+	return collect($releases)->values()->map(fn (array $release, int $i) => [
+		'tag_name' => $release[0],
+		'prerelease' => $release[1] ?? false,
+		'draft' => false,
+		'body' => $release[2] ?? '',
+		'html_url' => "https://github.com/winuxio/winux-cli/releases/tag/{$release[0]}",
+		'assets' => ($release[3] ?? true) ? [
+			['id' => 100 + $i, 'name' => 'winux'],
+			['id' => 200 + $i, 'name' => 'winux.sha256'],
+		] : [],
+	])->all();
+}
