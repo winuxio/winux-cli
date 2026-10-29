@@ -1,6 +1,7 @@
 <?php
 
 use App\Classes\Platform;
+use App\Classes\Scaffold;
 use App\Classes\Site;
 use App\Services\Postgres;
 use Illuminate\Process\PendingProcess;
@@ -13,10 +14,11 @@ use Illuminate\Support\Facades\Process;
  * directory (with an .env.example) like the real one would. $state:
  *  - gitIdentity: whether `git config --get user.*` answers
  *  - fail: a command name (e.g. 'install', 'key:generate', 'migrate') whose process fails
+ *  - gitRemote: whether `git remote` lists one
  */
 function fakeWorkflowProcesses(array $state = []): void
 {
-	$state += ['gitIdentity' => true, 'fail' => null];
+	$state += ['gitIdentity' => true, 'fail' => null, 'gitRemote' => false];
 
 	Process::fake(function (PendingProcess $process) use ($state) {
 		$command = (array) $process->command;
@@ -34,10 +36,17 @@ function fakeWorkflowProcesses(array $state = []): void
 		}
 
 		if (in_array('create-project', $command, true)) {
-			$path = getcwd() . '/' . end($command);
+			$target = end($command);
+			$path = str_starts_with($target, '/') ? $target : getcwd() . '/' . $target;
 			File::ensureDirectoryExists("$path/public");
 			File::put("$path/.env.example", "APP_NAME=Laravel\nAPP_KEY=\nDB_CONNECTION=sqlite\n");
+			File::put("$path/README.md", "# Laravel\n");
+			File::put("$path/.gitignore", "/vendor\n/node_modules\n.env\n");
 			return Process::result();
+		}
+
+		if (($command[0] ?? null) === 'git' && ($command[1] ?? null) === 'remote') {
+			return Process::result($state['gitRemote'] ? "origin\n" : '');
 		}
 
 		if (($command[0] ?? null) === 'git' && ($command[1] ?? null) === 'config') {
@@ -100,6 +109,85 @@ it('creates the repository, GitHub repo and packages the options ask for', funct
 		->and(ran(fn ($c) => ($c[0] ?? null) === 'gh' && in_array('--private', $c, true)))->toBeTrue()
 		->and(ran(fn ($c) => in_array('filament/filament', $c, true)))->toBeTrue()
 		->and(ran(fn ($c) => $c === ['git', 'commit', '-m', 'Installed Filament']))->toBeTrue();
+});
+
+it('adds the app around the files already in the directory', function () {
+	fakeWorkflowProcesses();
+	$project = "{$this->root}/work/blog";
+	File::ensureDirectoryExists("$project/docs");
+	File::put("$project/docs/plan.md", "# Plan\n");
+	File::put("$project/README.md", "# Blog\n");
+	File::put("$project/.gitignore", "/vendor\n.DS_Store\n");
+	chdir($project);
+
+	expect(Artisan::call('project:create', ['projectName' => '.', '--no-interaction' => true]))->toBe(0)
+		->and(Artisan::output())->toContain('blog is live at https://blog.local.winux.io')->toContain('Kept your README.md, .gitignore');
+
+	// composer installed beside the directory, not into it
+	expect(ran(fn ($c) => in_array('create-project', $c, true) && str_starts_with(end($c), "{$this->root}/work/.blog.winux-")))->toBeTrue();
+
+	expect(File::get("$project/README.md"))->toBe("# Blog\n")
+		->and(File::get("$project/docs/plan.md"))->toBe("# Plan\n")
+		->and(File::get("$project/.gitignore"))->toBe("/vendor\n.DS_Store\n\n# Added with the Laravel app\n/node_modules\n.env\n")
+		->and(is_dir("$project/public"))->toBeTrue()
+		->and(glob("{$this->root}/work/.blog.winux-*"))->toBe([]);
+});
+
+it('stops before touching anything when existing files clash with the app', function () {
+	fakeWorkflowProcesses();
+	$project = "{$this->root}/work/blog";
+	File::ensureDirectoryExists("$project/public");
+	File::put("$project/public/index.html", 'mine');
+
+	expect(Artisan::call('project:create', ['projectName' => 'blog', '--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('already has public, which the Laravel app also needs');
+
+	expect(File::get("$project/public/index.html"))->toBe('mine')
+		->and(Scaffold::entries($project))->toBe(['public'])
+		->and(glob("{$this->root}/work/.blog.winux-*"))->toBe([])
+		->and(glob("{$this->root}/.winux/sites/available/*"))->toBe([]);
+});
+
+it('commits to the repository a directory already has instead of creating one', function () {
+	fakeWorkflowProcesses(['gitRemote' => true]);
+	File::ensureDirectoryExists("{$this->root}/work/blog/.git");
+
+	expect(Artisan::call('project:create', ['projectName' => 'blog', '--github' => 'private', '--no-interaction' => true]))->toBe(0)
+		->and(Artisan::output())->toContain('already has a remote');
+
+	expect(ran(fn ($c) => $c === ['git', 'commit', '-m', 'Add Laravel app']))->toBeTrue()
+		->and(ran(fn ($c) => ($c[1] ?? null) === 'init'))->toBeFalse()
+		->and(ran(fn ($c) => ($c[0] ?? null) === 'gh'))->toBeFalse();
+});
+
+it('asks before adding the app to a directory with files', function () {
+	fakeWorkflowProcesses();
+	File::ensureDirectoryExists("{$this->root}/work/blog");
+	File::put("{$this->root}/work/blog/README.md", "# Blog\n");
+
+	$this->artisan('project:create', ['projectName' => 'blog'])
+		->expectsConfirmation("{$this->root}/work/blog already has 1 item(s) (README.md). Add a Laravel app alongside them?", 'no')
+		->assertFailed();
+
+	expect(ran(fn ($c) => in_array('create-project', $c, true)))->toBeFalse();
+});
+
+it('needs a project name without a terminal', function () {
+	fakeWorkflowProcesses();
+
+	expect(Artisan::call('project:create', ['--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('Pass a project name, or . to create the project in the current directory.');
+});
+
+it('creates a project at a path', function () {
+	fakeWorkflowProcesses();
+	File::ensureDirectoryExists("{$this->root}/elsewhere");
+
+	expect(Artisan::call('project:create', ['projectName' => '../elsewhere/shop', '--no-interaction' => true]))->toBe(0)
+		->and(Artisan::output())->toContain("cd {$this->root}/elsewhere/shop");
+
+	expect(is_dir("{$this->root}/elsewhere/shop/public"))->toBeTrue()
+		->and(File::get("{$this->root}/.winux/sites/available/shop.local.winux.io"))->toContain("{$this->root}/elsewhere/shop/public");
 });
 
 it('skips committing (and GitHub) when git has no identity', function () {

@@ -3,6 +3,7 @@
 namespace App\Commands\Projects;
 
 use App\Classes\Project;
+use App\Classes\Scaffold;
 use App\Classes\Winux;
 use App\Commands\Concerns\PreparesProject;
 use App\Enums\Editors;
@@ -10,7 +11,7 @@ use App\Enums\GitHubVisibility;
 use App\Enums\Packages;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, confirm, error, info, multiselect, select, warning};
+use function Laravel\Prompts\{alert, confirm, error, info, multiselect, note, select, text, warning};
 
 class CreateProject extends Command
 {
@@ -22,7 +23,7 @@ class CreateProject extends Command
 	 * @var string
 	 */
 	protected $signature = 'project:create
-		{projectName : The name of your new project that will be created in the local directory}
+		{projectName? : The new project: a name (created in the current directory), a path, or . for the current directory (asked for when left out)}
 		{--php= : PHP version (defaults to `winux php:default`)}
 		{--pg= : Postgres version (defaults to `winux postgres:default`)}
 		{--domain=* : Extra domains the site should also answer to}
@@ -47,6 +48,18 @@ class CreateProject extends Command
 	public function handle()
 	{
 		$projectName = $this->argument('projectName');
+		if ($projectName === null) {
+			if (!$this->input->isInteractive()) {
+				error('Pass a project name, or . to create the project in the current directory.');
+				return Command::FAILURE;
+			}
+			$projectName = text('Project name', placeholder: 'my-app', required: true, validate: fn ($name) => Project::nameError($name), hint: 'Created in the current directory');
+		}
+
+		$target = $this->resolveTarget($projectName, mustExist: false);
+		if (!$target) {
+			return Command::FAILURE;
+		}
 
 		// Options are checked before anything is created
 		$github = $this->option('github');
@@ -66,10 +79,21 @@ class CreateProject extends Command
 
 		Winux::SetupEnvironment();
 
-		$project = $this->prepareProject($projectName);
+		$project = $this->prepareProject(...$target);
 		if (!$project) {
 			return Command::FAILURE;
 		}
+
+		// A directory with a README, docs, or a .git gets the app added around them
+		if ($existing = Scaffold::entries($project->path)) {
+			$shown = array_slice($existing, 0, 5);
+			$list = implode(', ', $shown) . (count($existing) > count($shown) ? ', …' : '');
+			if ($this->input->isInteractive() && !confirm("{$project->path} already has " . count($existing) . " item(s) ($list). Add a Laravel app alongside them?", true)) {
+				return Command::FAILURE;
+			}
+			note("Adding the app around what's already in {$project->path}; existing files are never overwritten.");
+		}
+		$hadRepository = $project->hasGitRepository();
 
 		// Never another project's database (e.g. my_app's, for my-app); a deleted project's leftovers can be picked back up
 		if (!$project->claimExistingDatabase()) {
@@ -83,7 +107,7 @@ class CreateProject extends Command
 			alert('Failed to install the project\'s framework.');
 			return 1;
 		}
-		info("Framework files installed for $projectName");
+		info("Framework files installed for {$project->name}");
 
 		info('Performing infrastructure configuration...');
 
@@ -118,16 +142,20 @@ class CreateProject extends Command
 
 		// Without a terminal, only what the options ask for happens
 		$git = $this->option('git') || $github !== null
-			|| ($interactive && confirm('Initialize Git Repository and make initial commit?', true));
+			|| ($interactive && confirm($hadRepository ? 'Commit the new app to the existing git repository?' : 'Initialize Git Repository and make initial commit?', true));
 
 		if ($git) {
 			$committed = $project->initializeGitRepository();
+			// A repository that already pushes somewhere doesn't need a new GitHub repository
+			$hasRemote = $project->hasGitRemote();
 
-			if ($github === null && $committed && $interactive && confirm('Do you want to add the project to your GitHub account?', true)) {
+			if ($github === null && $committed && !$hasRemote && $interactive && confirm('Do you want to add the project to your GitHub account?', true)) {
 				$github = select('Public or Private Repository?', GitHubVisibility::selectValues());
 			}
 
-			if ($github !== null) {
+			if ($github !== null && $hasRemote) {
+				warning('Skipped creating a GitHub repository: this repository already has a remote. Push with `git push`.');
+			} elseif ($github !== null) {
 				if (!$committed) {
 					warning('Skipped creating the GitHub repository: there is no commit to push yet.');
 				} elseif (!$project->createGitHubRepo(GitHubVisibility::from($github))) {
@@ -174,7 +202,9 @@ class CreateProject extends Command
 			info("{$project->name} is live at https://{$project->getDomain()}");
 		}
 		$this->reportExtraDomains($project);
-		info("Switch into the new project directory with `cd $projectName` if needed.");
+		if (realpath(getcwd()) !== realpath($project->path)) {
+			info("Switch into the new project directory with `cd {$project->path}`.");
+		}
 
 		return 0;
 	}

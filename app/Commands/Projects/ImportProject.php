@@ -24,7 +24,7 @@ class ImportProject extends Command
 
 	public function handle(): int
 	{
-		$target = $this->resolveTarget($this->argument('projectName'));
+		$target = $this->resolveTarget($this->argument('projectName') ?? '.', mustExist: true);
 		if (!$target) {
 			return self::FAILURE;
 		}
@@ -107,30 +107,4 @@ class ImportProject extends Command
 		return self::SUCCESS;
 	}
 
-	/**
-	 * The project name and the directory holding it. A bare name is a directory in the current one;
-	 * `.` (or nothing) and paths like ../app or ~/dev/app are resolved to the real directory.
-	 *
-	 * @return array{0: string, 1: string}|null
-	 */
-	protected function resolveTarget(?string $target): ?array
-	{
-		$target ??= '.';
-		if (!str_contains($target, '/') && !in_array($target, ['.', '..', '~'], true)) {
-			return [$target, getcwd()];
-		}
-
-		$expanded = preg_replace('#^~(?=/|$)#', rtrim((string) config('winux.paths.home'), '/'), $target);
-		$path = realpath($expanded);
-		if ($path === false || !is_dir($path)) {
-			error("No project directory at $target.");
-			return null;
-		}
-		if ($path === '/') {
-			error("Can't import / as a project.");
-			return null;
-		}
-
-		return [basename($path), dirname($path)];
-	}
 }

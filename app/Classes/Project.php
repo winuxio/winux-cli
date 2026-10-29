@@ -475,6 +475,12 @@ class Project
 	 */
 	public function initializeGitRepository(): bool
 	{
+		// A directory that was already a repository (e.g. one with docs) gets the app as a new commit
+		if ($this->hasGitRepository()) {
+			$this->hasRepo = true;
+			return $this->gitCommit('Add Laravel app');
+		}
+
 		if (Process::path($this->path)->run(['git', 'init', '-b', 'main'])->failed()) {
 			error('Failed to initialize the git repository.');
 			return false;
@@ -483,6 +489,20 @@ class Project
 		$this->hasRepo = true;
 
 		return $this->gitCommit('Initial commit');
+	}
+
+	public function hasGitRepository(): bool
+	{
+		return file_exists($this->path . '/.git');
+	}
+
+	/**
+	 * Whether the repository already pushes somewhere, so there's no GitHub repository to create.
+	 */
+	public function hasGitRemote(): bool
+	{
+		return $this->hasGitRepository()
+			&& trim(Process::path($this->path)->run(['git', 'remote'])->output()) !== '';
 	}
 
 	/**
@@ -779,8 +799,13 @@ class Project
 			return false;
 		}
 
+		// composer refuses a directory with files in it (say a README and docs), so those get the app
+		// installed beside them first, in the same parent directory so moving it in is just a rename
+		$existing = Scaffold::entries($this->path);
+		$target = $existing ? dirname($this->path) . '/.' . $this->name . '.winux-' . bin2hex(random_bytes(4)) : $this->path;
+
 		$process = Process::forever()->run(
-			[$this->phpBinary(), $composer, 'create-project', 'laravel/laravel', $this->name],
+			[$this->phpBinary(), $composer, 'create-project', 'laravel/laravel', $target],
 			function ($type, $buffer) {
 				echo $buffer;
 			}
@@ -788,7 +813,36 @@ class Project
 
 		if ($process->failed()) {
 			error('Failed to create the laravel project.');
+			if ($existing) {
+				File::deleteDirectory($target);
+			}
 			return false;
+		}
+
+		return !$existing || $this->moveAppInto($target);
+	}
+
+	/**
+	 * Move the app staged in $staging into the project directory around the files already there.
+	 */
+	private function moveAppInto(string $staging): bool
+	{
+		if ($conflicts = Scaffold::conflicts($staging, $this->path)) {
+			File::deleteDirectory($staging);
+			error("{$this->path} already has " . implode(', ', $conflicts) . ', which the Laravel app also needs. Nothing was changed; move or rename them and try again.');
+			return false;
+		}
+
+		// Files both have, where yours win
+		$kept = array_values(array_intersect(Scaffold::KEEP_EXISTING, Scaffold::entries($this->path), Scaffold::entries($staging)));
+
+		if (!Scaffold::merge($staging, $this->path)) {
+			error("Couldn't move the Laravel app from $staging into {$this->path}. Whatever was moved stays; your own files were not changed.");
+			return false;
+		}
+
+		if ($kept) {
+			note('Kept your ' . implode(', ', $kept) . (in_array('.gitignore', $kept, true) ? " (with Laravel's ignore rules added to .gitignore)." : '.'));
 		}
 
 		return true;

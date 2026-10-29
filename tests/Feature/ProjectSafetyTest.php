@@ -97,8 +97,8 @@ it('rejects project names that would not map cleanly to a directory, domain, and
 	fakeProjectProcesses();
 
 	foreach (['project:create', 'project:import', 'project:delete', 'nginx:create'] as $command) {
-		// project:import takes paths too; those are covered below
-		if ($command === 'project:import' && ($name === '..' || str_contains($name, '/'))) {
+		// project:create and project:import take paths too; those are covered below
+		if (in_array($command, ['project:create', 'project:import'], true) && ($name === '..' || str_contains($name, '/'))) {
 			continue;
 		}
 		expect(Artisan::call($command, ['projectName' => $name, '--no-interaction' => true]))->toBe(1)
@@ -109,16 +109,32 @@ it('rejects project names that would not map cleanly to a directory, domain, and
 		->and(superuserStatements())->toBe([]);
 })->with(['my app', 'foo/bar', '..', '.hidden', '-app', 'app_', 'my.app', 'café']);
 
-it('refuses to import a path that is not a Laravel project', function (string $path) {
+it('refuses to import a path that is not a Laravel project', function () {
 	fakeProjectProcesses();
 	File::ensureDirectoryExists(getcwd() . '/foo/bar');
 
-	expect(Artisan::call('project:import', ['projectName' => $path, '--no-interaction' => true]))->toBe(1)
+	expect(Artisan::call('project:import', ['projectName' => 'foo/bar', '--no-interaction' => true]))->toBe(1)
 		->and(Artisan::output())->toContain('has no .env or .env.example');
 
 	expect(glob("{$this->root}/.winux/sites/available/*"))->toBe([])
 		->and(superuserStatements())->toBe([]);
-})->with(['..', 'foo/bar']);
+});
+
+it('never turns the home directory into a project', function (string $command, string $path) {
+	fakeProjectProcesses();
+	chdir($this->root);
+
+	expect(Artisan::call($command, ['projectName' => $path, '--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('Refusing to use');
+
+	Process::assertNotRan(fn ($process) => in_array('create-project', (array) $process->command, true));
+	expect(glob("{$this->root}/.winux/sites/available/*"))->toBe([]);
+})->with([
+	['project:create', '.'],
+	['project:import', '.'],
+	['project:create', '~'],
+	['project:import', 'work/..'],
+]);
 
 it('accepts letters, digits, hyphens and underscores', function () {
 	expect(Project::nameError('my-app'))->toBeNull()
