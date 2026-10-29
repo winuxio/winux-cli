@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.2](https://github.com/winuxio/winux-cli/compare/v0.3.1...v0.3.2) (2026-10-29)
+
+
+### Features
+
+* let project:import take . or a path, defaulting to the current directory ([#19](https://github.com/winuxio/winux-cli/issues/19)) ([989136b](https://github.com/winuxio/winux-cli/commit/989136bc3cd7c955cb2b321cfdfa88afbbe8b21e))
+
 ## [0.3.1](https://github.com/winuxio/winux-cli/compare/v0.3.0...v0.3.1) (2026-10-29)
 
 
