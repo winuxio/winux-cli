@@ -1,26 +1,37 @@
 name: Release
 
 # Stable releases: release-please keeps a "chore(main): release x.y.z" PR open, built from
-# conventional commits on main. Merging it tags the release, and the publish job attaches the PHAR.
+# conventional commits on main. Merging it tags the commit and creates a *draft* release; the
+# publish job attaches the PHAR and only then publishes the release and marks it Latest, so
+# releases/latest/download/winux never points at a release without a binary.
 #
 # Prereleases are cut by hand and go to the beta channel:
 #   git tag v1.2.0-beta.1 && git push origin v1.2.0-beta.1
+#
+# Recovery: if publish failed and more commits have landed since (so re-running the failed run
+# no longer helps), run this workflow by hand from the Actions tab with the release's tag.
 
 on:
   push:
     branches: [ main ]
     tags: [ 'v*-*' ]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to build and publish, e.g. v1.2.0
+        required: true
+        type: string
 
 permissions:
-  contents: write
-  pull-requests: write
-  id-token: write
-  attestations: write
+  contents: read
 
 jobs:
   release-please:
-    if: github.ref_type == 'branch'
+    if: github.event_name == 'push' && github.ref_type == 'branch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
     outputs:
       created: ${{ steps.release.outputs.release_created }}
       tag: ${{ steps.release.outputs.tag_name }}
@@ -37,16 +48,33 @@ jobs:
 
   publish:
     needs: release-please
-    if: ${{ !cancelled() && (needs.release-please.outputs.created == 'true' || github.ref_type == 'tag') }}
+    # !cancelled() so this still runs when release-please is skipped (tag push, manual run)
+    if: >-
+      ${{ !cancelled() && (
+        needs.release-please.outputs.created == 'true'
+        || (github.event_name == 'push' && github.ref_type == 'tag')
+        || github.event_name == 'workflow_dispatch'
+      ) }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     env:
-      TAG: ${{ needs.release-please.outputs.tag || github.ref_name }}
+      TAG: ${{ inputs.tag || needs.release-please.outputs.tag || github.ref_name }}
       GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
 
     steps:
+      - name: Check tag
+        shell: bash
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] \
+            || { echo "::error::'$TAG' isn't a release tag like v1.2.0 or v1.2.0-beta.1"; exit 1; }
+
       - uses: actions/checkout@v4
         with:
-          ref: ${{ env.TAG }}
+          ref: refs/tags/${{ env.TAG }}
 
       - uses: shivammathur/setup-php@v2
         with:
@@ -78,11 +106,33 @@ jobs:
         with:
           subject-path: builds/winux
 
+      # The release is a draft from release-please, missing (a hand-pushed prerelease tag), or
+      # already published (a manual re-run, which only replaces the assets).
       - name: Publish
+        shell: bash
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          set -euo pipefail
+
+          if state="$(gh release view "$TAG" --json isDraft,isPrerelease --jq '"\(.isDraft) \(.isPrerelease)"' 2>/dev/null)"; then
+            read -r draft prerelease <<<"$state"
             gh release upload "$TAG" builds/winux builds/winux.sha256 --clobber
           else
+            draft=true
+            prerelease=false
+            if [[ "$TAG" == *-* ]]; then prerelease=true; fi
             gh release create "$TAG" builds/winux builds/winux.sha256 \
-              --verify-tag --prerelease --generate-notes --title "$TAG"
+              --verify-tag --draft --prerelease="$prerelease" --generate-notes --title "$TAG"
           fi
+
+          if [ "$draft" = true ]; then
+            # Latest only when it's the newest stable release, so recovering an older one can't take over
+            latest=false
+            if [ "$prerelease" = false ]; then
+              newest="$( { gh release list --exclude-drafts --exclude-pre-releases --limit 200 --json tagName --jq '.[].tagName'; echo "$TAG"; } \
+                | sed 's/^v//' | sort -V | tail -n1)"
+              if [ "v$newest" = "$TAG" ]; then latest=true; fi
+            fi
+            gh release edit "$TAG" --draft=false --latest="$latest"
+          fi
+
+          echo "Published $TAG (prerelease: $prerelease)"

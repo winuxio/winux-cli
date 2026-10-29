@@ -6,6 +6,11 @@ use App\Http\Integrations\GitHub\GitHubConnector;
 use App\Http\Integrations\GitHub\Requests\DownloadAssetRequest;
 use App\Http\Integrations\GitHub\Requests\ListReleasesRequest;
 use RuntimeException;
+use Saloon\Exceptions\Request\FatalRequestException;
+use Saloon\Exceptions\Request\RequestException;
+use Saloon\Http\Request;
+use Saloon\Http\Response;
+use Throwable;
 
 /**
  * winux releases published on GitHub, each with a `winux` PHAR and a `winux.sha256` checksum.
@@ -14,6 +19,9 @@ class Releases
 {
 	public const CHANNELS = ['stable', 'beta'];
 
+	/** Every release from this version on publishes a winux.sha256, so a missing one is an error */
+	public const CHECKSUMS_SINCE = '0.2.0';
+
 	/**
 	 * Published releases that have a binary, newest first.
 	 *
@@ -21,9 +29,7 @@ class Releases
 	 */
 	public static function all(): array
 	{
-		$releases = (new GitHubConnector)
-			->send(new ListReleasesRequest(static::repository()))
-			->json();
+		$releases = static::send(new ListReleasesRequest(static::repository()))->json();
 
 		return static::parse($releases);
 	}
@@ -47,7 +53,7 @@ class Releases
 					'checksum' => $assets->firstWhere('name', "$asset.sha256")['id'] ?? null,
 				];
 			})
-			// Releases are published a minute or two before CI attaches the binary
+			// Releases are drafts until CI attaches the binary, but skip any published without one
 			->filter(fn (array $release) => $release['binary'] !== null)
 			->sort(fn (array $a, array $b) => version_compare($b['version'], $a['version']))
 			->values()
@@ -82,18 +88,22 @@ class Releases
 
 	/**
 	 * Downloads a release's binary to a temp file and verifies its checksum.
-	 * Returns the path, and whether a checksum was available to verify against.
+	 * Returns the path, and whether a checksum was available to verify against: only releases
+	 * older than CHECKSUMS_SINCE may lack one.
 	 *
 	 * @return array{0: string, 1: bool}
 	 */
 	public static function download(array $release): array
 	{
-		$connector = new GitHubConnector;
-		$binary = $connector->send(new DownloadAssetRequest(static::repository(), $release['binary']))->body();
+		if ($release['checksum'] === null && version_compare($release['version'], static::CHECKSUMS_SINCE, '>=')) {
+			throw new RuntimeException("winux {$release['version']} has no published checksum, so it can't be verified.");
+		}
+
+		$binary = static::send(new DownloadAssetRequest(static::repository(), $release['binary']))->body();
 
 		$verified = false;
 		if ($release['checksum'] !== null) {
-			$expected = static::parseChecksum($connector->send(new DownloadAssetRequest(static::repository(), $release['checksum']))->body());
+			$expected = static::parseChecksum(static::send(new DownloadAssetRequest(static::repository(), $release['checksum']))->body());
 			if (!hash_equals($expected, hash('sha256', $binary))) {
 				throw new RuntimeException("Checksum mismatch for winux {$release['version']}; the download may be corrupt.");
 			}
@@ -101,10 +111,63 @@ class Releases
 		}
 
 		$path = tempnam(sys_get_temp_dir(), 'winux-');
-		file_put_contents($path, $binary);
+		if ($path === false || file_put_contents($path, $binary) !== strlen($binary)) {
+			if ($path !== false) {
+				@unlink($path);
+			}
+			throw new RuntimeException("Couldn't save the download to " . sys_get_temp_dir() . '.');
+		}
 		chmod($path, 0755);
 
 		return [$path, $verified];
+	}
+
+	/**
+	 * Sends a request to GitHub. The token in GH_TOKEN / GITHUB_TOKEN is only there to lift the
+	 * anonymous rate limit, so when GitHub rejects it (expired, revoked) the request is retried
+	 * without it rather than failing.
+	 */
+	public static function send(Request $request): Response
+	{
+		try {
+			return (new GitHubConnector)->send($request);
+		} catch (RequestException $e) {
+			if ($e->getStatus() !== 401 || GitHubConnector::token() === null) {
+				throw $e;
+			}
+
+			return (new GitHubConnector(authenticate: false))->send($request);
+		}
+	}
+
+	/**
+	 * A one-line explanation of a failed GitHub request, without the response body.
+	 */
+	public static function describe(Throwable $e): string
+	{
+		if ($e instanceof FatalRequestException) {
+			return "GitHub couldn't be reached. Check your internet connection and try again.";
+		}
+
+		if (!$e instanceof RequestException) {
+			return $e->getMessage();
+		}
+
+		$response = $e->getResponse();
+		$status = $response->status();
+
+		if (in_array($status, [403, 429], true)
+			&& ($response->header('X-RateLimit-Remaining') === '0' || str_contains(strtolower($response->body()), 'rate limit'))) {
+			return GitHubConnector::token() === null
+				? "GitHub's API rate limit was reached. Try again in a while, or set GH_TOKEN to a GitHub token to lift the limit."
+				: "GitHub's API rate limit was reached for your GH_TOKEN. Try again in a while.";
+		}
+
+		if ($status === 401) {
+			return 'GitHub rejected the request (401). Check GH_TOKEN / GITHUB_TOKEN, or unset them.';
+		}
+
+		return "GitHub responded with HTTP $status" . ($e->getStatusMessage() ? " ({$e->getStatusMessage()})" : '') . '.';
 	}
 
 	/**

@@ -5,7 +5,7 @@
 #   curl -fsSL https://raw.githubusercontent.com/winuxio/winux-cli/main/install.sh | bash
 #
 # Environment overrides:
-#   WINUX_PHP=8.4          PHP version for the winux CLI itself (and the default for new sites)
+#   WINUX_PHP=8.4          PHP version for the winux CLI itself (8.3 or newer; also the default for new sites)
 #   WINUX_VERSION=latest   Release tag to install, e.g. v0.2.0
 #   WINUX_BIN=/usr/local/bin/winux
 #
@@ -13,12 +13,26 @@ set -euo pipefail
 
 REPO="winuxio/winux-cli"
 PHP_VERSION="${WINUX_PHP:-8.4}"
+PHP_MINIMUM="8.3"
 WINUX_VERSION="${WINUX_VERSION:-latest}"
 WINUX_BIN="${WINUX_BIN:-/usr/local/bin/winux}"
+# Every release from this version on publishes winux.sha256
+CHECKSUMS_SINCE="0.2.0"
 
 info() { printf '\033[1;34m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mWarning:\033[0m %s\n' "$*" >&2; }
 fail() { printf '\033[1;31mError:\033[0m %s\n' "$*" >&2; exit 1; }
+
+# version_lt 8.2 8.3: true when the first version is older than the second
+version_lt() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" = "$1" ]; }
+
+# Everything runs from main, called on the last line, so a download cut short by a dropped
+# connection can't run half the script. (The body isn't indented, to keep diffs readable.)
+main() {
+
+[[ "$PHP_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] || fail "WINUX_PHP must be a PHP version like 8.4, not '$PHP_VERSION'."
+version_lt "$PHP_VERSION" "$PHP_MINIMUM" && fail "winux needs PHP $PHP_MINIMUM or newer, but WINUX_PHP is $PHP_VERSION. Use WINUX_PHP=8.4 (sites can still use older PHP versions)."
+PHP_BIN="php${PHP_VERSION}"
 
 [ "$(id -u)" -eq 0 ] && fail "Run this as your normal user (it uses sudo when needed), not as root."
 command -v sudo >/dev/null || fail "sudo is required."
@@ -28,6 +42,7 @@ command -v apt-get >/dev/null || fail "winux supports Debian-based distributions
 . /etc/os-release
 DISTRO="${ID:-unknown}"
 CODENAME="${VERSION_CODENAME:-${UBUNTU_CODENAME:-}}"
+PRETTY_NAME="${PRETTY_NAME:-$DISTRO}"
 
 case "$DISTRO" in
 	ubuntu|debian) ;;
@@ -51,7 +66,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq ca-certificates curl 
 
 has_php_repo() {
 	grep -rqsE 'ondrej/php|ondrej-ubuntu-php|packages\.sury\.org/php' /etc/apt/sources.list /etc/apt/sources.list.d/ 2>/dev/null \
-		|| ls /etc/apt/sources.list.d/ 2>/dev/null | grep -q 'ondrej-ubuntu-php'
+		|| compgen -G '/etc/apt/sources.list.d/*ondrej-ubuntu-php*' >/dev/null
 }
 
 if ! has_php_repo; then
@@ -76,14 +91,23 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
 	"php${PHP_VERSION}-cli" "php${PHP_VERSION}-curl" "php${PHP_VERSION}-mbstring" \
 	"php${PHP_VERSION}-xml" "php${PHP_VERSION}-zip" "php${PHP_VERSION}-intl" >/dev/null
 
+command -v "$PHP_BIN" >/dev/null || fail "$PHP_BIN wasn't installed. Check the apt output above."
+
+# The winux binary runs with whichever `php` is first on PATH
+path_php="$(php -r 'echo PHP_MAJOR_VERSION . "." . PHP_MINOR_VERSION;' 2>/dev/null || true)"
+if [ -z "$path_php" ] || version_lt "$path_php" "$PHP_MINIMUM"; then
+	warn "'php' on your PATH is ${path_php:+PHP }${path_php:-missing}, but winux needs PHP $PHP_MINIMUM or newer. Point it at PHP ${PHP_VERSION} with:"
+	printf '\n    sudo update-alternatives --set php /usr/bin/%s\n\n' "$PHP_BIN" >&2
+fi
+
 if ! command -v composer >/dev/null; then
 	info "Installing Composer..."
 	tmp_dir="$(mktemp -d)"
 	expected="$(curl -fsSL https://composer.github.io/installer.sig)"
 	curl -fsSLo "$tmp_dir/composer-setup.php" https://getcomposer.org/installer
-	actual="$(php -r "echo hash_file('sha384', '$tmp_dir/composer-setup.php');")"
+	actual="$("$PHP_BIN" -r "echo hash_file('sha384', '$tmp_dir/composer-setup.php');")"
 	[ "$expected" = "$actual" ] || { rm -rf "$tmp_dir"; fail "Composer installer checksum mismatch."; }
-	php "$tmp_dir/composer-setup.php" --quiet --install-dir="$tmp_dir"
+	"$PHP_BIN" "$tmp_dir/composer-setup.php" --quiet --install-dir="$tmp_dir"
 	sudo install -m 0755 "$tmp_dir/composer.phar" /usr/local/bin/composer
 	rm -rf "$tmp_dir"
 fi
@@ -103,14 +127,27 @@ tmp_dir="$(mktemp -d)"
 trap 'rm -rf "$tmp_dir"' EXIT
 curl -fsSLo "$tmp_dir/winux" "$base_url/winux" || fail "Couldn't download $base_url/winux"
 
-if curl -fsSLo "$tmp_dir/winux.sha256" "$base_url/winux.sha256" 2>/dev/null; then
-	(cd "$tmp_dir" && sha256sum --check --status winux.sha256) || fail "Checksum mismatch: the download may be corrupt. Try again."
-	info "Checksum verified"
-else
-	warn "This release has no checksum; skipping verification."
-fi
+# Required, except for a pinned release that predates checksums. Only a 404 means "no checksum":
+# any other failure (network, 5xx) stops the install rather than skipping verification.
+checksum_status="$(curl -sSL -o "$tmp_dir/winux.sha256" -w '%{http_code}' "$base_url/winux.sha256")" || checksum_status="000"
+case "$checksum_status" in
+	200)
+		(cd "$tmp_dir" && sha256sum --check --status winux.sha256) || fail "Checksum mismatch: the download may be corrupt. Try again."
+		info "Checksum verified"
+		;;
+	404)
+		if [ "$WINUX_VERSION" != "latest" ] && version_lt "${WINUX_VERSION#v}" "$CHECKSUMS_SINCE"; then
+			warn "winux ${WINUX_VERSION} predates published checksums; skipping verification."
+		else
+			fail "winux ${WINUX_VERSION} has no published checksum ($base_url/winux.sha256), so the download can't be verified."
+		fi
+		;;
+	*)
+		fail "Couldn't download the checksum from $base_url/winux.sha256 (HTTP $checksum_status). Try again."
+		;;
+esac
 
-php "$tmp_dir/winux" --version >/dev/null || fail "The downloaded winux binary failed to run."
+"$PHP_BIN" "$tmp_dir/winux" --version >/dev/null || fail "The downloaded winux binary failed to run with $PHP_BIN."
 sudo install -m 0755 "$tmp_dir/winux" "$WINUX_BIN"
 
 # Earlier versions installed to /usr/sbin
@@ -124,3 +161,7 @@ echo "Next, set up your stack (nginx, PHP, Postgres, Redis, SSL):"
 echo
 echo "    winux setup"
 echo
+
+}
+
+main "$@"

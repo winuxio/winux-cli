@@ -97,3 +97,20 @@ it('fetches releases from the GitHub API', function () {
 	expect(Releases::all()[0]['version'])->toBe('1.0.0');
 	$mock->assertSent(fn ($request) => $request->resolveEndpoint() === '/repos/winuxio/winux-cli/releases');
 });
+
+it('requires a checksum from 0.2.0 on, and only allows older releases without one', function () {
+	MockClient::global([
+		'*/releases/assets/100' => MockResponse::make('new-binary'),
+		'*/releases/assets/101' => MockResponse::make('old-binary'),
+	]);
+	$releases = array_map(
+		fn (array $release) => ['checksum' => null] + $release,
+		Releases::parse(githubReleases([['v0.2.1'], ['v0.0.1', true]]))
+	);
+
+	[$path, $verified] = Releases::download($releases[1]);
+	expect(file_get_contents($path))->toBe('old-binary')->and($verified)->toBeFalse();
+	unlink($path);
+
+	Releases::download($releases[0]);
+})->throws(RuntimeException::class, 'no published checksum');

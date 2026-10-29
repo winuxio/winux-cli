@@ -31,10 +31,23 @@ class UpdateCheck
 		return is_file($path) ? (json_decode((string) file_get_contents($path), true) ?: []) : [];
 	}
 
+	/**
+	 * Merges values into the cache. Written to a temp file and renamed into place, so the
+	 * background check and a foreground command never see each other's half-written file.
+	 */
 	public static function store(array $values): void
 	{
-		File::ensureDirectoryExists(dirname(static::path()));
-		File::put(static::path(), json_encode($values + static::cached(), JSON_PRETTY_PRINT) . "\n");
+		$path = static::path();
+		File::ensureDirectoryExists(dirname($path));
+
+		$temp = tempnam(dirname($path), 'update-check.');
+		if ($temp === false) {
+			return;
+		}
+
+		if (File::put($temp, json_encode($values + static::cached(), JSON_PRETTY_PRINT) . "\n") === false || !@rename($temp, $path)) {
+			@unlink($temp);
+		}
 	}
 
 	public static function isStale(?int $now = null): bool

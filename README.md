@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/winuxio/winux-cli/main/install.sh |
 winux setup
 ```
 
-`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin` after checking its checksum. Set `WINUX_PHP=8.3` or `WINUX_VERSION=v0.2.0` to override the defaults.
+`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin` after checking its checksum. Set `WINUX_PHP=8.3` (winux itself needs PHP 8.3 or newer; sites can use older versions) or `WINUX_VERSION=v0.2.0` to override the defaults.
 
 `winux setup` then asks which PHP versions and which Postgres version you want, and installs:
 
@@ -54,7 +54,9 @@ winux self-update --rollback      # go back to the version you had before the la
 winux self-update --channel=beta  # opt into prereleases (--channel=stable to go back)
 ```
 
-Every download is checked against the release's SHA-256 checksum and must run and report the expected version before it replaces the installed binary. Releases also carry [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations), so you can confirm a binary was built by this repository's CI:
+Run `winux self-update` as yourself, not with `sudo`: winux asks for your password itself when the binary's directory needs it, and running it as root would keep the rollback copy and your update channel in `/root/.winux` instead of `~/.winux`.
+
+Every download, by `self-update` and by `install.sh`, is checked against the release's SHA-256 checksum, and is refused if the checksum is missing or can't be fetched. The only exception is pinning a release older than 0.2.0, which predates checksums and installs with a warning. A download must also run and report the expected version before it replaces the installed binary, and if replacing it fails, the installed binary and the rollback copy are left as they were. Releases also carry [build provenance](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations), so you can confirm a binary was built by this repository's CI:
 
 ```bash
 gh attestation verify "$(command -v winux)" --repo winuxio/winux-cli
@@ -186,7 +188,9 @@ Releases are automated with [release-please](https://github.com/googleapis/relea
 
 1. PRs are squash-merged, and their titles must be [conventional commits](https://www.conventionalcommits.org/) (checked by CI): `feat: ...` for features, `fix: ...` for bug fixes, `feat!: ...` for breaking changes (a minor bump while winux is 0.x). `docs:`, `chore:`, `refactor:`, `test:` and `ci:` don't trigger a release.
 2. release-please keeps a `chore(main): release x.y.z` PR open with the version bump and `CHANGELOG.md`, updated as PRs land.
-3. Merging that PR tags the release. CI then runs the tests, builds the PHAR, and attaches `winux`, `winux.sha256` and a provenance attestation. Users get the update notice within a day.
+3. Merging that PR tags the release and creates it as a draft. CI then runs the tests, builds the PHAR, attaches `winux`, `winux.sha256` and a provenance attestation, and only then publishes the release, so the latest release always has a binary. Users get the update notice within a day.
+
+If that publish run fails, fix the cause and re-run it. If more commits have landed on `main` since, run the **Release** workflow by hand (Actions → Release → Run workflow) with the release's tag, e.g. `v1.2.0`; it builds and publishes that tag, and also works for prerelease tags.
 
 release-please opens its PR with the `RELEASE_PLEASE_TOKEN` repository secret: a [fine-grained token](https://github.com/settings/personal-access-tokens/new) whose resource owner is `winuxio`, limited to this repository, with **Contents** and **Pull requests** set to read and write. It falls back to the built-in token, which only works if the org allows Actions to create pull requests (and CI won't run on the release PR).
 

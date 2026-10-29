@@ -11,6 +11,13 @@ class GitHubConnector extends Connector
 	use AcceptsJson;
 	use AlwaysThrowOnErrors;
 
+	/**
+	 * @param  bool  $authenticate  Send GH_TOKEN / GITHUB_TOKEN when one is set
+	 */
+	public function __construct(public readonly bool $authenticate = true)
+	{
+	}
+
 	public function resolveBaseUrl(): string
 	{
 		return 'https://api.github.com';
@@ -24,11 +31,16 @@ class GitHubConnector extends Connector
 		];
 
 		// Optional, only to lift the anonymous rate limit (60 requests/hour)
-		if ($token = getenv('GH_TOKEN') ?: getenv('GITHUB_TOKEN')) {
+		if ($this->authenticate && ($token = static::token())) {
 			$headers['Authorization'] = "Bearer $token";
 		}
 
 		return $headers;
+	}
+
+	public static function token(): ?string
+	{
+		return getenv('GH_TOKEN') ?: getenv('GITHUB_TOKEN') ?: null;
 	}
 
 	protected function defaultConfig(): array
