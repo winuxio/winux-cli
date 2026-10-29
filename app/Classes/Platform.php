@@ -91,8 +91,8 @@ class Platform
 		return Process::run(['sh', '-c', 'command -v ' . escapeshellarg($command)])->successful();
 	}
 
-	/** For tests */
-	public static function fake(array $osRelease): void
+	/** For tests; null goes back to reading /etc/os-release */
+	public static function fake(?array $osRelease): void
 	{
 		static::$osRelease = $osRelease;
 	}
