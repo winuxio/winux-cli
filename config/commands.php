@@ -64,6 +64,8 @@ return [
         Illuminate\Foundation\Console\VendorPublishCommand::class,
         LaravelZero\Framework\Commands\StubPublishCommand::class,
 		\App\Commands\LocalInstall::class,
+		// Winux.io accounts aren't available yet
+		\App\Commands\Account\LoginCommand::class,
 		\Saloon\Laravel\Console\Commands\MakeAuthenticator::class,
 		\Saloon\Laravel\Console\Commands\MakeConnector::class,
 		\Saloon\Laravel\Console\Commands\ListCommand::class,

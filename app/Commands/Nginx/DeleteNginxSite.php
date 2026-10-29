@@ -16,19 +16,27 @@ class DeleteNginxSite extends Command
 
 	protected $signature = 'nginx:delete
 		{domain? : Site name or domain (defaults to the project in the current directory)}
+		{--site= : Same as the domain argument}
 		{--force : Skip the confirmation}';
 
 	protected $description = "Delete an nginx site and its certificate (the project's files and database are kept)";
 
 	public function handle(): int
 	{
-		$site = $this->resolveSite($this->argument('domain'));
+		$site = $this->resolveSite($this->option('site') ?? $this->argument('domain'));
 		if (!$site) {
 			return self::FAILURE;
 		}
 
-		if (!$this->option('force') && !confirm("Delete the nginx site {$site->domain}?", false)) {
-			return self::FAILURE;
+		if (!$this->option('force')) {
+			if (!$this->input->isInteractive()) {
+				error('Pass --force to delete a site with --no-interaction.');
+				return self::FAILURE;
+			}
+
+			if (!confirm("Delete the nginx site {$site->domain}?", false)) {
+				return self::FAILURE;
+			}
 		}
 
 		$extraDomains = $site->extraDomains();

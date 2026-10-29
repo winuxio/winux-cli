@@ -19,11 +19,23 @@ class DropDatabase extends Command
 
 	public function handle(): int
 	{
+		if ($reason = Postgres::versionError($this->option('pg'))) {
+			error($reason);
+			return self::FAILURE;
+		}
+
 		$dbName = Project::databaseName($this->argument('database'));
 		$postgres = Postgres::make($this->option('pg'));
 
-		if (!$this->option('force') && !confirm("Drop database '$dbName' and user '$dbName' from {$postgres->label()}?", false)) {
-			return self::FAILURE;
+		if (!$this->option('force')) {
+			if (!$this->input->isInteractive()) {
+				error('Pass --force to drop a database with --no-interaction.');
+				return self::FAILURE;
+			}
+
+			if (!confirm("Drop database '$dbName' and user '$dbName' from {$postgres->label()}?", false)) {
+				return self::FAILURE;
+			}
 		}
 
 		if (!$postgres->dropAll($dbName)) {
