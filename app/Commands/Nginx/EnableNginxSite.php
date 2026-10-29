@@ -2,43 +2,32 @@
 
 namespace App\Commands\Nginx;
 
-use App\Classes\Site;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Commands\Concerns\ResolvesSite;
+use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\info;
 
 class EnableNginxSite extends Command
 {
-    protected $signature = 'nginx:enable {domain}';
-    protected $description = 'Enable an Nginx site by creating a symbolic link in sites-enabled';
+	use ResolvesSite;
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-	public function handle()
-    {
-        $domain = $this->argument('domain');
-		
-        if (Site::make($domain)->enable()) {
-            info('Site activated successfully!');
-            return 0;
-        } else {
-            error('Failed to activate the site.');
-            return 1;
-        }
-    }
+	protected $signature = 'nginx:enable {domain? : Site name or domain (defaults to the project in the current directory)}';
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+	protected $description = 'Enable an nginx site';
+
+	public function handle(): int
+	{
+		$site = $this->resolveSite($this->argument('domain'));
+		if (!$site || !$site->enable()) {
+			return self::FAILURE;
+		}
+
+		if (!Nginx::make()->reload()) {
+			return self::FAILURE;
+		}
+
+		info("Enabled {$site->domain}.");
+		return self::SUCCESS;
+	}
 }

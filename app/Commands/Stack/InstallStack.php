@@ -2,62 +2,63 @@
 
 namespace App\Commands\Stack;
 
+use App\Classes\Winux;
 use App\Enums\ServiceType;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Services\PhpFpm;
+use App\Services\Postgres;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{info, error};
+use function Laravel\Prompts\{error, info};
 
 class InstallStack extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'service:install {service?}';
+	protected $signature = 'service:install
+		{service? : nginx, php, postgres, redis, or mysql (default: the whole stack)}
+		{version? : Version for php or postgres, e.g. 8.4 or 16}';
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Install the stack (Nginx, PHP, Postgres/MySQL, Redis, etc.)';
+	protected $description = 'Install the stack (Nginx, PHP, Postgres, Redis) or a single service';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-        $serviceName = $this->argument('service');
-		$services = ServiceType::services();
-
-		if ($serviceName !== null) {
-			/** @var Service $service */
-			$service = $services[$serviceName];
-			if (!$service::make()->install())
-				return Command::FAILURE;
-			
-			return Command::SUCCESS;
-		} 
-
-		foreach ($services as $serviceName => $service) {
-			$service::make()->install();
+	public function handle(): int
+	{
+		$service = $this->argument('service');
+		if ($service !== null && !ServiceType::tryFrom($service)) {
+			error("Unknown service '$service'. Choose from: " . implode(', ', ServiceType::values()));
+			return self::FAILURE;
 		}
-		info('Stack restarted successfully!');
-		return Command::SUCCESS;
-    }
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		// Installing the whole stack installs the default versions, not every installed one
+		$services = $service
+			? ServiceType::resolve($service, $this->argument('version') ?? $this->defaultVersionFor($service))
+			: [...ServiceType::resolve('nginx'), PhpFpm::make(), Postgres::make(), ...ServiceType::resolve('redis')];
+
+		$failed = false;
+		foreach ($services as $instance) {
+			if (!$instance->install()) {
+				$failed = true;
+			}
+		}
+
+		Postgres::flushClusterCache();
+
+		if ($service === null || $service === 'nginx') {
+			Winux::SetupEnvironment();
+		}
+
+		if ($failed) {
+			error('Some services failed to install.');
+			return self::FAILURE;
+		}
+
+		info('Installed: ' . collect($services)->map->label()->implode(', '));
+		return self::SUCCESS;
+	}
+
+	protected function defaultVersionFor(string $service): ?string
+	{
+		return match ($service) {
+			'php' => PhpFpm::defaultVersion(),
+			'postgres' => Postgres::defaultVersion(),
+			default => null,
+		};
+	}
 }

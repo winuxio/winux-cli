@@ -3,7 +3,6 @@
 namespace App\Commands\Redis;
 
 use App\Services\Redis;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\error;
@@ -40,16 +39,5 @@ class RestartRedis extends Command
 
 		info('Redis restarted successfully!');
 		return Command::SUCCESS;
-    }
-
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
     }
 }

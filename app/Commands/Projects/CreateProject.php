@@ -2,30 +2,30 @@
 
 namespace App\Commands\Projects;
 
-use App\Classes\Certificate;
-use App\Classes\OpenSSL;
 use App\Classes\Project;
-use App\Classes\Site;
 use App\Classes\Winux;
+use App\Commands\Concerns\PreparesProject;
 use App\Enums\Editors;
 use App\Enums\GitHubVisibility;
-use App\Enums\Packages;
 use App\Services\Nginx;
-use App\Services\Postgres;
-use Illuminate\Console\Scheduling\Schedule;
-use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, confirm, error, info, select, multiselect};
+use function Laravel\Prompts\{alert, confirm, info, select};
 
 class CreateProject extends Command
 {
+	use PreparesProject;
+
 	/**
 	 * The signature of the command.
 	 *
 	 * @var string
 	 */
-	protected $signature = 'project:create {projectName : The name of your new project that will be created in the local directory}'; // {--type=laravel}';
+	protected $signature = 'project:create
+		{projectName : The name of your new project that will be created in the local directory}
+		{--php= : PHP version (defaults to `winux php:default`)}
+		{--pg= : Postgres version (defaults to `winux postgres:default`)}
+		{--domain=* : Extra domains the site should also answer to}';
 
 	/**
 	 * The description of the command.
@@ -42,13 +42,15 @@ class CreateProject extends Command
 	public function handle()
 	{
 		$projectName = $this->argument('projectName');
-		// $projectType = $this->option('type');
 
 		Winux::SetupEnvironment();
 
-		$project = Project::create($projectName);
+		$project = $this->prepareProject($projectName);
+		if (!$project) {
+			return Command::FAILURE;
+		}
 
-		info("Creating project '{$project->name}' at '{$project->path}'");
+		info("Creating project '{$project->name}' at '{$project->path}' (PHP {$project->phpVersion}, Postgres {$project->postgresVersion})");
 
 		// Lets create the project now
 		if (!$project->installFramework()) {
@@ -77,6 +79,8 @@ class CreateProject extends Command
 		}
 
 		info("{$project->name}'s .env file updated successfully!");
+
+		$this->offerMigrations($project);
 
 		$this->title('Project created successfully!');
 
@@ -114,19 +118,10 @@ class CreateProject extends Command
 		}
 
 		info("{$project->name} is live at https://{$project->getDomain()}");
+		$this->reportExtraDomains($project);
 		info("Switch into the new project directory with `cd $projectName` if needed.");
 
 		return 0;
 	}
 
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
-	}
 }

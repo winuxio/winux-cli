@@ -3,98 +3,139 @@
 namespace App\Services;
 
 use App\Classes\Apt;
+use App\Classes\Platform;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\{alert, error, info};
 
 abstract class Service
 {
-	protected static string $initPath = '/etc/init.d/';
+	/** The systemd unit / init script name */
+	protected static ?string $serviceName = null;
 
-	// Meant to be overridden
 	protected function serviceName(): string
 	{
+		if (static::$serviceName === null) {
+			throw new \LogicException(static::class . ' must define a service name.');
+		}
 		return static::$serviceName;
 	}
 
-	protected static ?string $serviceName = null;
-
-	protected ?string $commandSuffix = null;
+	public function label(): string
+	{
+		return $this->serviceName();
+	}
 
 	public static function make(): static
 	{
-		$service = new static();
-		return $service;
+		return new static();
+	}
+
+	/**
+	 * Every instance of this service that stack-wide commands should act on.
+	 * Overridden by services that can have multiple versions installed side by side.
+	 *
+	 * @return static[]
+	 */
+	public static function instances(): array
+	{
+		return [static::make()];
 	}
 
 	public function start(): bool
 	{
-		return static::init(__FUNCTION__);
+		return $this->control('start');
 	}
 
 	public function stop(): bool
 	{
-		return static::init(__FUNCTION__);
+		return $this->control('stop');
 	}
 
 	public function restart(): bool
 	{
-		return static::init(__FUNCTION__);
+		return $this->control('restart');
 	}
 
-	protected function init(string $command): bool
+	public function reload(): bool
 	{
-		$commandParts = [
-			'sudo',
-			static::$initPath . (static::$serviceName ?? $this->serviceName()),
-			$command
-		];
+		return $this->control('reload');
+	}
 
-		if ($this->commandSuffix) {
-			$commandParts[] = $this->commandSuffix;
+	public function isActive(): bool
+	{
+		if (Platform::hasSystemd()) {
+			return Process::run(['systemctl', 'is-active', '--quiet', $this->serviceName()])->successful();
 		}
+
+		return Process::run(['sudo', 'service', $this->serviceName(), 'status'])->successful();
+	}
+
+	public function isInstalled(): bool
+	{
+		return collect($this->packages())->every(fn ($package) => Apt::isInstalled($package));
+	}
+
+	protected function control(string $command): bool
+	{
+		$commandParts = Platform::hasSystemd()
+			? ['sudo', 'systemctl', $command, $this->serviceName()]
+			: ['sudo', 'service', $this->serviceName(), $command];
+
 		info('Running command: ' . implode(' ', $commandParts));
-		$process = Process::run($commandParts);
+		$process = Process::timeout(120)->run($commandParts);
 
 		if ($process->failed()) {
-			alert('Failed to ' . $command . ' ' . $this->serviceName() . '.');
+			alert('Failed to ' . $command . ' ' . $this->label() . '.');
 			error($process->errorOutput());
 			return false;
 		}
 
-		return $process->successful();
-	}
-
-	/**
-	 * Intended to be overridden if the service's name in apt is different than the service's name
-	 * or if the service has additional dependencies that need to be installed.
-	 */
-	protected function packages(): array
-	{
-		if ($this->serviceName() === null)
-			throw new \Exception('Can\'t install a service without a name!');
-		return [ $this->serviceName() ];
-	}
-
-	/**
-	 * Installs the service's packages and returns true if successful.
-	 * Can be overridden, if the pre(todo) or post install hooks are not sufficient.
-	 */
-	public function install(): bool
-	{
-		if (!Apt::update()) return false;
-
-		if (!Apt::install($this->packages())) {
-			alert("Failed to install {$this->serviceName()}.");
-			return false;
-		}
-
-		info("{$this->serviceName()} installed successfully!");
 		return true;
 	}
 
 	/**
-	 * Intended to be overridden if the service needs to do something after it's installed.
+	 * The apt packages that make up this service.
+	 */
+	protected function packages(): array
+	{
+		return [$this->serviceName()];
+	}
+
+	/**
+	 * Hook for adding third-party apt repositories before installing.
+	 */
+	protected function preInstall(): bool
+	{
+		return true;
+	}
+
+	/**
+	 * Installs the service's packages and returns true if successful.
+	 */
+	public function install(): bool
+	{
+		if (!$this->preInstall()) return false;
+
+		if (!Apt::update()) return false;
+
+		if (!Apt::install($this->packages())) {
+			alert("Failed to install {$this->label()}.");
+			return false;
+		}
+
+		if (!$this->postInstall()) return false;
+
+		if (Platform::hasSystemd()) {
+			Process::run(['sudo', 'systemctl', 'enable', '--now', $this->serviceName()]);
+		}
+
+		info("{$this->label()} installed successfully!");
+		return true;
+	}
+
+	/**
+	 * Hook for configuration that must happen after the packages are installed.
 	 */
 	protected function postInstall(): bool
 	{

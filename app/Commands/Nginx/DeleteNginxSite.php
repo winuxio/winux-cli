@@ -3,61 +3,46 @@
 namespace App\Commands\Nginx;
 
 use App\Classes\Certificate;
-use App\Classes\Site;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Classes\Hosts;
+use App\Commands\Concerns\ResolvesSite;
+use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\error;
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\{confirm, error, info};
 
 class DeleteNginxSite extends Command
 {
-	/**
-	 * The signature of the command.
-	 *
-	 * @var string
-	 */
-	protected $signature = 'nginx:delete {domain}';
+	use ResolvesSite;
 
-	/**
-	 * The description of the command.
-	 *
-	 * @var string
-	 */
-	protected $description = 'Delete an Nginx site config for a given domain (filename)';
+	protected $signature = 'nginx:delete
+		{domain? : Site name or domain (defaults to the project in the current directory)}
+		{--force : Skip the confirmation}';
 
-	/**
-	 * Execute the console command.
-	 *
-	 * @return mixed
-	 */
-	public function handle()
+	protected $description = "Delete an nginx site and its certificate (the project's files and database are kept)";
+
+	public function handle(): int
 	{
-		$domain = $this->argument('domain');
-		$site = Site::make($domain);
-
-		$this->call('nginx:disable', ['domain' => $domain]);
-
-		// Check if the site exists
-		if (!$site->delete()) {
-			error('Failed to delete the site.');
-			return 1;
+		$site = $this->resolveSite($this->argument('domain'));
+		if (!$site) {
+			return self::FAILURE;
 		}
 
-		Certificate::destroy($domain);
+		if (!$this->option('force') && !confirm("Delete the nginx site {$site->domain}?", false)) {
+			return self::FAILURE;
+		}
+
+		$extraDomains = $site->extraDomains();
+
+		if (!$site->disable() || !$site->delete()) {
+			error('Failed to delete the site.');
+			return self::FAILURE;
+		}
+
+		Certificate::destroy($site->domain);
+		Hosts::remove(array_filter($extraDomains, fn ($domain) => !Hosts::coveredByWildcard($domain) && !str_starts_with($domain, '*.')));
+		Nginx::make()->reload();
 
 		info('Site deleted successfully!');
-		return 0;
-	}
-
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
+		return self::SUCCESS;
 	}
 }

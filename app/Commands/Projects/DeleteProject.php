@@ -7,7 +7,6 @@ use App\Classes\Project;
 use App\Classes\Site;
 use App\Services\Nginx;
 use App\Services\Postgres;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 
@@ -64,16 +63,5 @@ class DeleteProject extends Command
 		Nginx::make()->reload();
 
 		$this->title("$projectName deleted successfully!");
-	}
-
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
 	}
 }

@@ -2,88 +2,82 @@
 
 namespace App\Commands\Projects;
 
-use App\Classes\Project;
 use App\Classes\Winux;
+use App\Commands\Concerns\PreparesProject;
+use App\Enums\Editors;
 use App\Services\Nginx;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{info, alert, confirm};
+use function Laravel\Prompts\{alert, confirm, error, info, select};
 
 class ImportProject extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'project:import {projectName : The name of the project in the local directory that will have its infrastructure configured}';
+	use PreparesProject;
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Import an existing project in the local directory and configure its infrastructure';
+	protected $signature = 'project:import
+		{projectName : The project directory (in the current directory) to configure}
+		{--php= : PHP version (defaults to `winux php:default`)}
+		{--pg= : Postgres version (defaults to the one matching DB_PORT in .env, then `winux postgres:default`)}
+		{--domain=* : Extra domains the site should also answer to}';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-        $projectName = $this->argument('projectName');
+	protected $description = 'Configure nginx, SSL, a database, and .env for an existing project (reusing its database when .env already works)';
 
-        Winux::SetupEnvironment();
+	public function handle(): int
+	{
+		$projectName = $this->argument('projectName');
 
-        $project = Project::create($projectName);
+		Winux::SetupEnvironment();
 
-        info("Importing project '{$project->name}' at '{$project->path}'");
+		$project = $this->prepareProject($projectName);
+		if (!$project) {
+			return self::FAILURE;
+		}
 
-        info('Performing infrastructure configuration...');
+		if (!is_dir($project->path)) {
+			error("No project directory at {$project->path}.");
+			return self::FAILURE;
+		}
 
-        if (!$project->setupNginx()) {
-            alert('Failed to create the nginx site.');
-            return Command::FAILURE;
-        }
+		info("Importing project '{$project->name}' at '{$project->path}' (PHP {$project->phpVersion}, Postgres {$project->postgresVersion})");
 
-        Nginx::make()->reload();
+		if (!$project->setupNginx()) {
+			alert('Failed to create the nginx site.');
+			return self::FAILURE;
+		}
 
-        if (!$project->setupDatabase()) {
-            alert('Failed to create all required postgres resources.');
-            return Command::FAILURE;
-        }
+		Nginx::make()->reload();
 
-        if (!$project->configureEnv()) {
-            alert('Failed to create the .env file.');
-            return Command::FAILURE;
-        }
+		if (!$project->setupImportedDatabase()) {
+			alert('Failed to create all required postgres resources.');
+			return self::FAILURE;
+		}
 
-        info("{$project->name}'s .env file updated successfully!");
+		if (!$project->configureEnv()) {
+			alert('Failed to update the .env file.');
+			return self::FAILURE;
+		}
 
-        $this->title('Project imported successfully!');
+		info("{$project->name}'s .env file updated successfully!");
 
-        if (confirm('Do you want to open the project in VS Code?', true)) {
-            $project->openEditor();
-        }
+		$this->offerMigrations($project);
 
-        if (confirm('Do you want to open the project in your browser?', true)) {
-            $project->openBrowser();
-        }
+		$this->title('Project imported successfully!');
 
-        info("{$project->name} is live at https://{$project->getDomain()}");
-        info("Switch into the new project directory with `cd $projectName` if needed.");
-    }
+		if ($this->input->isInteractive() && confirm('Do you want to open the project in your IDE?', true)) {
+			$ide = select(
+				'Which IDE do you want to use?',
+				collect(Editors::cases())->mapWithKeys(fn ($editor) => [$editor->value => $editor->getLabel()])->all()
+			);
+			$project->openEditor(Editors::from($ide));
+		}
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		if ($this->input->isInteractive() && confirm('Do you want to open the project in your browser?', true)) {
+			$project->openBrowser();
+		}
+
+		info("{$project->name} is live at https://{$project->getDomain()}");
+		$this->reportExtraDomains($project);
+
+		return self::SUCCESS;
+	}
 }

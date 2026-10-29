@@ -1,10 +1,12 @@
 <?php
 
+$home = $_SERVER['HOME'] ?? getenv('HOME') ?: '/root';
+
 return [
 	'paths' => [
-		'home' => $_SERVER['HOME'],
+		'home' => $home,
 		'winux' => '.winux',
-		'base' => $_SERVER['HOME'] . DIRECTORY_SEPARATOR . '.winux',
+		'base' => $home . DIRECTORY_SEPARATOR . '.winux',
 		'sites' => [
 			'available' => 'sites/available',
 			'enabled' => 'sites/enabled',
@@ -13,17 +15,44 @@ return [
 
 	'nginx' => [
 		'config' => '/etc/nginx/nginx.conf',
-		'domain' => 'local.winux.io'
+		'domain' => 'local.winux.io',
 	],
 
 	'php' => [
-		'version' => '8.4',
+		// Used when nothing has been chosen via `winux php:default`
+		'default' => '8.4',
+		'root' => '/etc/php',
+		// Older versions are hidden from php:list / php:install prompts
+		'minimum' => '8.1',
+		// Extensions installed alongside each php{version}-fpm package
+		'extensions' => [
+			'cli', 'common', 'bcmath', 'curl', 'gd', 'intl', 'mbstring', 'mysql',
+			'pgsql', 'readline', 'redis', 'sqlite3', 'xml', 'zip',
+		],
+	],
+
+	'postgres' => [
+		// Installed by `winux setup` / `service:install postgres` when no version is given.
+		// Projects use `winux postgres:default`, else the newest installed version.
+		'default' => '16',
+		'supported' => ['14', '15', '16', '17', '18'],
 	],
 
 	'ssl' => [
+		// mkcert's CAROOT. The legacy winux_root.* files are adopted as rootCA*.pem
 		'root' => [
-			'key' => 'winux_root.key',
-			'cert' => 'winux_root.crt',
+			'cert' => 'rootCA.pem',
+			'key' => 'rootCA-key.pem',
+			'legacy_cert' => 'winux_root.crt',
+			'legacy_key' => 'winux_root.key',
 		],
-	]
+	],
+
+	'github' => [
+		'repository' => 'winuxio/winux-cli',
+		'asset' => 'winux',
+	],
+
+	// The binary self-update replaces; null means the running PHAR
+	'binary' => null,
 ];

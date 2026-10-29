@@ -2,47 +2,37 @@
 
 namespace App\Commands\SSL;
 
-use App\Classes\OpenSSL;
-use Illuminate\Console\Scheduling\Schedule;
+use App\Classes\Mkcert;
+use App\Classes\Platform;
 use LaravelZero\Framework\Commands\Command;
+
+use function Laravel\Prompts\{info, note};
 
 class InstallRootCA extends Command
 {
-    /**
-     * The signature of the command.
-     *
-     * @var string
-     */
-    protected $signature = 'ssl:root:install';
+	protected $signature = 'ssl:root:install {--skip-windows : Only trust the CA inside Linux/WSL}';
 
-    /**
-     * The description of the command.
-     *
-     * @var string
-     */
-    protected $description = 'Install the root CA certificate to the system trust store';
+	protected $description = 'Install mkcert and trust the Winux root CA (Linux + Windows)';
 
-    /**
-     * Execute the console command.
-     *
-     * @return mixed
-     */
-    public function handle()
-    {
-        // Ensure SSL directories exist and root CA is generated
-        OpenSSL::init();
+	public function handle(): int
+	{
+		if (!Mkcert::init()) {
+			return self::FAILURE;
+		}
 
-        OpenSSL::installRoot();
-    }
+		info('Root CA: ' . Mkcert::rootCert());
 
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
-    }
+		$ok = Mkcert::installLinuxTrust();
+
+		if (Platform::isWsl() && !$this->option('skip-windows')) {
+			if (Mkcert::isTrustedByWindows()) {
+				info('Windows already trusts the root CA.');
+			} else {
+				$ok = Mkcert::installWindowsTrust() && $ok;
+			}
+			note('Firefox on Windows: set security.enterprise_roots.enabled to true in about:config if it still warns.');
+		}
+
+		return $ok ? self::SUCCESS : self::FAILURE;
+	}
 }

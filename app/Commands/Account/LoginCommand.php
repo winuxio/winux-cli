@@ -5,7 +5,6 @@ namespace App\Commands\Account;
 use App\Classes\Utility;
 use App\Http\Integrations\Winux\Requests\ClientRegistrationRequest;
 use App\Http\Integrations\Winux\WinuxAuthConnector;
-use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
@@ -76,16 +75,5 @@ class LoginCommand extends Command
         }, 'Waiting for you to login to your Winux.io Account...');
 
         return self::SUCCESS;
-    }
-
-    /**
-     * Define the command's schedule.
-     *
-     * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-     * @return void
-     */
-    public function schedule(Schedule $schedule): void
-    {
-        // $schedule->command(static::class)->everyMinute();
     }
 }

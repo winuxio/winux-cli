@@ -1,50 +1,55 @@
-# .github/workflows/laravel-zero-build.yml
-
 name: Winux CLI Build
 
 on:
   push:
-    branches: [ main, action-build ]
+    branches: [ main ]
   pull_request:
-    branches: [ main, action-build ]
-
-env:
-  VERSION: 'unreleased'
+    branches: [ main ]
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php: [ '8.3', '8.4', '8.5' ]
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - uses: actions/checkout@v4
 
-    - name: Setup PHP
-      uses: shivammathur/setup-php@v2
-      with:
-        php-version: '8.2'
-        tools: composer:v2
-        extensions: mbstring, xml, ctype, json
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          tools: composer:v2
+          extensions: mbstring, xml, ctype, json, openssl
+          coverage: none
 
-    - name: Get Composer Cache Directory
-      id: composer-cache
-      run: echo "COMPOSER_CACHE_DIR=$(composer config cache-files-dir)" >> $GITHUB_OUTPUT
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress
 
-    - name: Cache Composer dependencies
-      uses: actions/cache@v3
-      with:
-        path: ${{ steps.composer-cache.outputs.COMPOSER_CACHE_DIR }}
-        key: ${{ runner.os }}-composer-${{ hashFiles('**/composer.lock') }}
-        restore-keys: ${{ runner.os }}-composer-
+      - name: Run tests
+        run: composer test
 
-    - name: Install Composer dependencies
-      run: composer install --prefer-dist --no-progress
+  build:
+    runs-on: ubuntu-latest
+    needs: test
 
-    - name: Run Laravel Zero build command
-      run: php winux app:build --build-version=${{ env.VERSION }}
+    steps:
+      - uses: actions/checkout@v4
 
-    - name: Upload Build Artifact
-      uses: actions/upload-artifact@v3
-      with:
-        name: winux-build
-        path: builds/winux
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          extensions: mbstring, xml, ctype, json, openssl
+          coverage: none
+
+      - name: Install Composer dependencies
+        run: composer install --prefer-dist --no-progress --no-dev
+
+      - name: Build PHAR
+        run: php winux app:build --build-version=dev-${GITHUB_SHA::7}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: winux-build
+          path: builds/winux

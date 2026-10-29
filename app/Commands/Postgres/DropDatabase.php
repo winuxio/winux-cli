@@ -2,67 +2,36 @@
 
 namespace App\Commands\Postgres;
 
+use App\Classes\Project;
 use App\Services\Postgres;
-use Illuminate\Console\Scheduling\Schedule;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{error,info};
+use function Laravel\Prompts\{confirm, error, info};
 
 class DropDatabase extends Command
 {
-	/**
-	 * The signature of the command.
-	 *
-	 * @var string
-	 */
-	protected $signature = 'postgres:delete {database}';
+	protected $signature = 'postgres:delete
+		{database : Database name (its same-named user is dropped too)}
+		{--pg= : Postgres version (defaults to `winux postgres:default`)}
+		{--force : Skip the confirmation}';
 
-	/**
-	 * The description of the command.
-	 *
-	 * @var string
-	 */
-	protected $description = 'Drop a Postgres database (and user of the same name)';
+	protected $description = 'Drop a Postgres database and its user';
 
-	/**
-	 * Execute the console command.
-	 *
-	 * @return mixed
-	 */
-	public function handle()
+	public function handle(): int
 	{
-		$db_name = $this->argument('database');
-		// Convert hyphens to underscores
-		$db_name = str_replace('-', '_', $db_name);
-		// Convert the db name to a valid database name, (only lowercase letters and underscores)
-		$db_name = preg_replace('/[^a-z0-9_]/', '', $db_name);
-		// dd($db_name);
-		$db_user = $db_name;
+		$dbName = Project::databaseName($this->argument('database'));
+		$postgres = Postgres::make($this->option('pg'));
 
-		$postgres = Postgres::make();
-		if (!$postgres->dropDatabase($db_name)) {
-			error('Failed to drop the database.');
-		} else {
-			info('Database dropped successfully!');
+		if (!$this->option('force') && !confirm("Drop database '$dbName' and user '$dbName' from {$postgres->label()}?", false)) {
+			return self::FAILURE;
 		}
 
-		if (!$postgres->dropUser($db_user)) {
-			error('Failed to drop the user.');
-		} else {
-			info('User dropped successfully!');
+		if (!$postgres->dropAll($dbName)) {
+			error('Failed to drop some (or all) database resources.');
+			return self::FAILURE;
 		}
 
-		return 0;
-	}
-
-	/**
-	 * Define the command's schedule.
-	 *
-	 * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
-	 * @return void
-	 */
-	public function schedule(Schedule $schedule): void
-	{
-		// $schedule->command(static::class)->everyMinute();
+		info("Dropped $dbName.");
+		return self::SUCCESS;
 	}
 }

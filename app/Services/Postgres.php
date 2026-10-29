@@ -2,32 +2,143 @@
 
 namespace App\Services;
 
-use App\Enums\Versions\PostgresVersion;
+use App\Classes\AptRepository;
+use App\Classes\Settings;
 use Illuminate\Support\Facades\Process;
+use Illuminate\Support\Str;
 
-use function Laravel\Prompts\error;
 use function Laravel\Prompts\warning;
 
 class Postgres extends Service
 {
-	protected static ?string $serviceName = 'postgresql';
+	public string $version;
 
-	// public int $port = 5432;
+	/** @var array<string, array{port: int, status: string}>|null */
+	protected static ?array $clusters = null;
 
-	protected array $installedVersions = [ ];
-	public PostgresVersion $version;
-
-	public function __construct()
+	public function __construct(?string $version = null)
 	{
-		$this->checkVersions();
-		// Set the version to the last installed version
-		$this->version = PostgresVersion::from(array_key_last($this->installedVersions));
-		$this->commandSuffix = $this->version->value;
+		$this->version = $version ?? static::defaultVersion();
+
+		if (!preg_match('/^\d+$/', $this->version)) {
+			throw new \InvalidArgumentException("Invalid Postgres version '{$this->version}'. Expected something like 16.");
+		}
+	}
+
+	public static function make(?string $version = null): static
+	{
+		return new static($version);
+	}
+
+	public static function instances(): array
+	{
+		$versions = static::installedVersions() ?: [static::defaultVersion()];
+		return array_map(fn ($version) => static::make($version), $versions);
+	}
+
+	protected function serviceName(): string
+	{
+		return "postgresql@{$this->version}-main";
+	}
+
+	public function label(): string
+	{
+		return "Postgres {$this->version}";
+	}
+
+	protected function packages(): array
+	{
+		return ["postgresql-{$this->version}"];
+	}
+
+	public function isInstalled(): bool
+	{
+		return in_array($this->version, static::installedVersions(), true);
+	}
+
+	protected function preInstall(): bool
+	{
+		return AptRepository::ensurePostgres();
+	}
+
+	protected function postInstall(): bool
+	{
+		static::$clusters = null;
+		return true;
 	}
 
 	public function getPort(): int
 	{
-		return $this->installedVersions[$this->version->value];
+		$clusters = static::clusters();
+		if (!isset($clusters[$this->version])) {
+			throw new \RuntimeException("Postgres {$this->version} is not installed. Run `winux service:install postgres {$this->version}`.");
+		}
+
+		return $clusters[$this->version]['port'];
+	}
+
+	/**
+	 * The version chosen via `winux postgres:default`, else the newest installed one,
+	 * else the configured default (what a fresh install gets).
+	 */
+	public static function defaultVersion(): string
+	{
+		$installed = static::installedVersions();
+		$chosen = Settings::get('postgres.default');
+
+		if ($chosen !== null && (empty($installed) || in_array((string) $chosen, $installed, true))) {
+			return (string) $chosen;
+		}
+
+		return $installed ? end($installed) : (string) config('winux.postgres.default');
+	}
+
+	/** @return string[] */
+	public static function installedVersions(): array
+	{
+		$versions = array_map('strval', array_keys(static::clusters()));
+		sort($versions, SORT_NUMERIC);
+		return $versions;
+	}
+
+	/**
+	 * The 'main' cluster of each installed Postgres version, keyed by version.
+	 *
+	 * @return array<string, array{port: int, status: string}>
+	 */
+	public static function clusters(): array
+	{
+		if (static::$clusters !== null) {
+			return static::$clusters;
+		}
+
+		$process = Process::run(['pg_lsclusters', '--no-header']);
+		if ($process->failed()) {
+			return static::$clusters = [];
+		}
+
+		return static::$clusters = static::parseClusters($process->output());
+	}
+
+	public static function parseClusters(string $output): array
+	{
+		$clusters = [];
+		foreach (explode("\n", trim($output)) as $line) {
+			// Ver Cluster Port Status Owner Data-directory Log-file
+			$columns = preg_split('/\s+/', trim($line));
+			if (count($columns) < 4 || $columns[1] !== 'main') {
+				continue;
+			}
+
+			$clusters[$columns[0]] = ['port' => (int) $columns[2], 'status' => $columns[3]];
+		}
+
+		return $clusters;
+	}
+
+	public static function flushClusterCache(): void
+	{
+		static::$clusters = null;
 	}
 
 	public function createAll(string $dbName, ?string $username = null, ?string $password = null): bool
@@ -35,139 +146,125 @@ class Postgres extends Service
 		$username ??= $dbName;
 		$password ??= self::generatePassword();
 
-		// Create database if it doesn't exist
-		if (!$this->databaseExists($dbName)) {
-			if (!$this->createDatabase($dbName)) {
-				return false;
-			}
-		}
-
-		// Drop and recreate user to ensure we have the correct password
-		if ($this->userExists($username)) {
-			$this->dropUser($username);
-		}
-
-		if (!$this->createUser($username, $password)) {
+		if (!$this->databaseExists($dbName) && !$this->createDatabase($dbName)) {
 			return false;
 		}
 
-		return $this->grant($dbName, $username);
+		// Reset the password of an existing user so the new .env matches
+		$userReady = $this->userExists($username)
+			? $this->setPassword($username, $password)
+			: $this->createUser($username, $password);
+
+		return $userReady && $this->grant($dbName, $username);
 	}
 
 	public function dropAll(string $dbName, ?string $username = null): bool
 	{
 		$username ??= $dbName;
-		$success = true;
-		if (!$this->dropDatabase($dbName)) {
-			// error("Failed to drop database: $dbName");
-			$success = false;
-		}
-		if (!$this->dropUser($username)) {
-			// error("Failed to drop user: $username");
-			$success = false;
-		}
-		return $success;
+		$success = $this->dropDatabase($dbName);
+		return $this->dropUser($username) && $success;
 	}
 
 	public static function generatePassword(): string
 	{
-		return \Illuminate\Support\Str::password(16, true, true, false);
+		return Str::password(16, true, true, false);
 	}
 
 	public function databaseExists(string $databaseName): bool
 	{
-		$process = Process::run([
-			'sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(),
-			'-tAc', "SELECT 1 FROM pg_database WHERE datname = '$databaseName'"
-		]);
-		return trim($process->output()) === '1';
+		return $this->scalar('SELECT 1 FROM pg_database WHERE datname = ' . static::literal($databaseName)) === '1';
 	}
 
 	public function userExists(string $username): bool
 	{
-		$process = Process::run([
-			'sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(),
-			'-tAc', "SELECT 1 FROM pg_roles WHERE rolname = '$username'"
-		]);
-		return trim($process->output()) === '1';
+		return $this->scalar('SELECT 1 FROM pg_roles WHERE rolname = ' . static::literal($username)) === '1';
 	}
 
 	public function createDatabase(string $databaseName): bool
 	{
-		return $this->query("CREATE DATABASE $databaseName");
+		return $this->query('CREATE DATABASE ' . static::identifier($databaseName));
 	}
 
 	public function dropDatabase(string $databaseName): bool
 	{
-		return $this->query("DROP DATABASE $databaseName");
+		return $this->query('DROP DATABASE IF EXISTS ' . static::identifier($databaseName) . ' WITH (FORCE)');
 	}
 
 	public function createUser(string $username, string $password): bool
 	{
-		$query= "CREATE USER $username WITH ENCRYPTED PASSWORD '$password'";
-		return $this->query($query);
+		return $this->query('CREATE ROLE ' . static::identifier($username) . ' WITH LOGIN PASSWORD ' . static::literal($password));
 	}
 
 	public function dropUser(string $username): bool
 	{
-		// Revoke privileges first (required for PostgreSQL 15+)
-		$this->query("REVOKE ALL ON SCHEMA public FROM $username");
-
-		$query = "DROP USER $username";
-		return $this->query($query);
+		return $this->query('DROP ROLE IF EXISTS ' . static::identifier($username));
 	}
 
 	public function grant(string $databaseName, string $username): bool
 	{
-		// Set the user as the database owner
-		if (!$this->query("ALTER DATABASE $databaseName OWNER TO $username"))
-			return false;
+		$db = static::identifier($databaseName);
+		$user = static::identifier($username);
 
-		$query = "GRANT ALL PRIVILEGES ON DATABASE $databaseName TO $username";
-		if (!$this->query($query))
-			return false;
-
-		// PostgreSQL 15+ requires explicit schema grants
-		if ((int) $this->version->value >= 15) {
-			$query = "GRANT ALL ON SCHEMA public TO $username";
-			if (!$this->query($query))
-				return false;
-		}
-
-		return true;
+		// Owning the database (and its public schema) covers Postgres 15+'s tightened defaults
+		// Existing tables (e.g. an imported database) may be owned by another role
+		return $this->query("ALTER DATABASE $db OWNER TO $user")
+			&& $this->query("GRANT ALL PRIVILEGES ON DATABASE $db TO $user")
+			&& $this->query("ALTER SCHEMA public OWNER TO $user", $databaseName)
+			&& $this->query("GRANT ALL ON ALL TABLES IN SCHEMA public TO $user", $databaseName)
+			&& $this->query("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $user", $databaseName);
 	}
 
-	protected function query(string $query): bool
+	public function setPassword(string $username, string $password): bool
 	{
-		$process = Process::run(['sudo', '-u', 'postgres', 'psql', '-p', $this->getPort(), '-c', $query]);
+		return $this->query('ALTER ROLE ' . static::identifier($username) . ' WITH LOGIN PASSWORD ' . static::literal($password));
+	}
+
+	/**
+	 * Whether the given credentials can log in, the way the app would (over TCP with a password).
+	 */
+	public static function canConnect(string $host, int $port, string $database, string $username, string $password): bool
+	{
+		return Process::env(['PGPASSWORD' => $password, 'PGCONNECT_TIMEOUT' => '5'])
+			->timeout(15)
+			->run(['psql', '-w', '-h', $host, '-p', (string) $port, '-U', $username, '-d', $database, '-tAc', 'SELECT 1'])
+			->successful();
+	}
+
+	public static function identifier(string $name): string
+	{
+		return '"' . str_replace('"', '""', $name) . '"';
+	}
+
+	public static function literal(string $value): string
+	{
+		return "'" . str_replace("'", "''", $value) . "'";
+	}
+
+	protected function psql(array $args, string $database = 'postgres'): array
+	{
+		return [
+			'sudo', '-u', 'postgres', 'psql',
+			'-p', (string) $this->getPort(),
+			'-d', $database,
+			'-v', 'ON_ERROR_STOP=1',
+			...$args,
+		];
+	}
+
+	protected function scalar(string $query): string
+	{
+		return trim(Process::path('/')->run($this->psql(['-tAc', $query]))->output());
+	}
+
+	protected function query(string $query, string $database = 'postgres'): bool
+	{
+		$process = Process::path('/')->run($this->psql(['-c', $query], $database));
 
 		if ($process->failed()) {
 			warning($process->errorOutput());
 			return false;
 		}
 
-		return $process->successful();
+		return true;
 	}
-
-	public function checkVersions(): void
-	{
-		// grep -H '^port' /etc/postgresql/*/main/postgresql.conf
-		// Run the above command via Symfony process
-		$process = Process::run("grep -H '^port' /etc/postgresql/*/main/postgresql.conf");
-		$output = $process->output();
-		$lines = collect(explode("\n", trim($output)));
-
-		$lines->each(function ($line) {
-			// Use regular expressions to extract the version and port
-			if (preg_match('/\/etc\/postgresql\/(\d+)\/main\/postgresql\.conf:port = (\d+)/', $line, $matches)) {
-				$version = $matches[1];
-				$port = $matches[2];
-		
-				// Store in the associative array
-				$this->installedVersions[PostgresVersion::from($version)->value] = $port;
-			}
-		});
-		
-	}
-
 }
