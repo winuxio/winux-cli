@@ -16,12 +16,17 @@ return [
 	'nginx' => [
 		'config' => '/etc/nginx/nginx.conf',
 		'domain' => 'local.winux.io',
+		'pid' => '/run/nginx.pid',
+		// Where the placeholder page (storage/default-site/www) is installed
+		'default_root' => '/var/www/html',
 	],
 
 	'php' => [
 		// Used when nothing has been chosen via `winux php:default`
 		'default' => '8.4',
 		'root' => '/etc/php',
+		// Where the versioned CLIs live (php8.4, ...)
+		'bin' => '/usr/bin',
 		// Older versions are hidden from php:list / php:install prompts
 		'minimum' => '8.1',
 		// Extensions installed alongside each php{version}-fpm package

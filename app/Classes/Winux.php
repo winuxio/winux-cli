@@ -28,14 +28,14 @@ class Winux
 		// Create the sites directory
 		// dump($sitesAvailable, $sitesEnabled);
 		if (!is_dir($sitesAvailable)) {
-			if (!mkdir($sitesAvailable, 0777, true)) {
+			if (!mkdir($sitesAvailable, 0755, true)) {
 				throw new \Exception('Failed to create the sites-available directory.');
 			}
 			info("Created the sites-available directory.");
 		}
 
 		if (!is_dir($sitesEnabled)) {
-			if (!mkdir($sitesEnabled, 0777, true)) {
+			if (!mkdir($sitesEnabled, 0755, true)) {
 				throw new \Exception('Failed to create the sites-enabled directory.');
 			}
 			info("Created the sites-enabled directory.");

@@ -4,6 +4,7 @@ namespace App\Commands;
 
 use App\Classes\AptRepository;
 use App\Classes\Platform;
+use App\Classes\ServiceUser;
 use App\Classes\Settings;
 use App\Services\PhpFpm;
 use App\Services\Postgres;
@@ -15,7 +16,8 @@ class Setup extends Command
 {
 	protected $signature = 'setup
 		{--php=* : PHP versions to install (default: prompt)}
-		{--pg= : Postgres version to install (default: prompt)}';
+		{--pg= : Postgres version to install (default: prompt)}
+		{--skip-windows : Only trust the root CA inside Linux/WSL, not in Windows}';
 
 	protected $description = 'Set up this machine: repositories, Nginx, PHP, Postgres, Redis, and SSL';
 
@@ -34,6 +36,22 @@ class Setup extends Command
 			if (!confirm('Continue without systemd?', false)) {
 				return self::FAILURE;
 			}
+		}
+
+		// Checked before anything is installed
+		foreach ($this->option('php') as $version) {
+			if (!PhpFpm::isValidVersion($version)) {
+				error("'$version' isn't a PHP version (expected something like 8.4).");
+				return self::FAILURE;
+			}
+		}
+		if (($pg = $this->option('pg')) !== null && !preg_match('/^\d+$/', $pg)) {
+			error("'$pg' isn't a Postgres version (expected something like 16).");
+			return self::FAILURE;
+		}
+
+		if (!ServiceUser::resolve()) {
+			return self::FAILURE;
 		}
 
 		if (!AptRepository::ensurePhp() || !AptRepository::ensurePostgres()) {
@@ -64,7 +82,9 @@ class Setup extends Command
 			])->all(),
 			"Postgres $pgVersion" => fn () => Postgres::make($pgVersion)->isInstalled() || $this->call('service:install', ['service' => 'postgres', 'version' => $pgVersion]) === self::SUCCESS,
 			'Redis' => fn () => $this->call('service:install', ['service' => 'redis']) === self::SUCCESS,
-			'SSL' => fn () => $this->call('ssl:root:install') === self::SUCCESS,
+			// Also covers PHP versions that were already installed (and so skipped above)
+			'Run nginx and PHP-FPM as you' => fn () => $this->call('service:configure') === self::SUCCESS,
+			'SSL' => fn () => $this->call('ssl:root:install', array_filter(['--skip-windows' => $this->option('skip-windows')])) === self::SUCCESS,
 		];
 
 		$failed = [];
@@ -75,9 +95,15 @@ class Setup extends Command
 			}
 		}
 
-		Settings::set('php.default', $defaultPhp);
-		Settings::set('postgres.default', $pgVersion);
 		Postgres::flushClusterCache();
+
+		// Only versions that actually got installed become the defaults
+		if (PhpFpm::make($defaultPhp)->isInstalled()) {
+			Settings::set('php.default', $defaultPhp);
+		}
+		if (Postgres::make($pgVersion)->isInstalled()) {
+			Settings::set('postgres.default', $pgVersion);
+		}
 
 		if ($failed) {
 			error('Setup finished with failures: ' . implode(', ', $failed));

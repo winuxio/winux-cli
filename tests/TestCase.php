@@ -22,6 +22,9 @@ abstract class TestCase extends BaseTestCase
         // called outside a command never wait on the terminal: they take their default answer
         \Laravel\Prompts\Prompt::fallbackWhen(false);
         \Laravel\Prompts\Prompt::interactive(false);
+
+        \App\Classes\Platform::fakeEnvironment();
+        \App\Classes\ServiceUser::fake(null);
     }
 
     protected function tearDown(): void

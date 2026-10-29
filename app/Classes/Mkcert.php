@@ -54,16 +54,32 @@ class Mkcert
 
 		static::adoptLegacyRoot();
 
-		if (!static::hasRootCA()) {
-			// Running mkcert with CAROOT set creates rootCA.pem + rootCA-key.pem on first use
-			$process = static::process()->run(['mkcert', '-CAROOT']);
-			if ($process->failed()) {
-				error('Failed to initialize the mkcert root CA.');
-				error($process->errorOutput());
-				return false;
-			}
+		if (!static::hasRootCA() && !static::createRootCA()) {
+			return false;
 		}
 
+		return true;
+	}
+
+	/**
+	 * mkcert creates rootCA.pem + rootCA-key.pem in CAROOT the first time it issues a certificate
+	 * (`mkcert -CAROOT` only prints the path), so issue a throwaway one and check the CA appeared.
+	 */
+	public static function createRootCA(): bool
+	{
+		$dir = sys_get_temp_dir() . DIRECTORY_SEPARATOR . 'winux-ca-' . bin2hex(random_bytes(4));
+		File::ensureDirectoryExists($dir, 0700);
+
+		$process = static::process()->run(['mkcert', '-cert-file', "$dir/cert.pem", '-key-file', "$dir/key.pem", 'localhost']);
+		File::deleteDirectory($dir);
+
+		if ($process->failed() || !static::hasRootCA()) {
+			error('Failed to create the mkcert root CA in ' . static::caRoot() . '.');
+			error($process->errorOutput());
+			return false;
+		}
+
+		info('Created a root CA in ' . static::caRoot() . '.');
 		return true;
 	}
 

@@ -49,7 +49,13 @@ case "$DISTRO" in
 	*) fail "Unsupported distribution: ${PRETTY_NAME:-$DISTRO}. winux supports Ubuntu and Debian." ;;
 esac
 
-if grep -qi microsoft /proc/version 2>/dev/null; then
+# A real WSL distro (with Windows interop), not just a WSL kernel: Docker containers on WSL
+# report "microsoft" in /proc/version too
+is_wsl() {
+	[ -n "${WSL_DISTRO_NAME:-}" ] || [ -d /run/WSL ] || compgen -G '/proc/sys/fs/binfmt_misc/WSLInterop*' >/dev/null
+}
+
+if is_wsl; then
 	info "Detected WSL (${PRETTY_NAME})"
 	if [ ! -d /run/systemd/system ]; then
 		warn "systemd is not running. winux manages services with systemd."

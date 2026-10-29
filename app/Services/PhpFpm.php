@@ -4,7 +4,12 @@ namespace App\Services;
 
 use App\Classes\Apt;
 use App\Classes\AptRepository;
+use App\Classes\ServiceUser;
 use App\Classes\Settings;
+use App\Classes\SystemFile;
+use Illuminate\Support\Facades\Process;
+
+use function Laravel\Prompts\error;
 
 class PhpFpm extends Service
 {
@@ -62,6 +67,92 @@ class PhpFpm extends Service
 	{
 		return AptRepository::ensurePhp();
 	}
+
+	#region Run as the winux user
+	protected function postInstall(): bool
+	{
+		$user = ServiceUser::resolve();
+		return $user !== null && $this->runAs($user['name'], $user['group']);
+	}
+
+	public function poolFile(): string
+	{
+		return config('winux.php.root') . "/{$this->version}/fpm/pool.d/www.conf";
+	}
+
+	/**
+	 * Runs the www pool as the given user, with its socket owned by them so nginx (running as
+	 * the same user) can connect. Only those four directives change. Restarts FPM if it's running.
+	 */
+	public function runAs(string $user, string $group): bool
+	{
+		$path = $this->poolFile();
+		$current = @file_get_contents($path);
+		if ($current === false) {
+			error("PHP-FPM pool config not found at $path. Is PHP {$this->version} FPM installed?");
+			return false;
+		}
+
+		$updated = static::withPoolUser($current, $user, $group);
+		if ($updated === $current) {
+			return true;
+		}
+
+		if (!SystemFile::replace($path, $updated, fn () => $this->test())) {
+			return false;
+		}
+
+		return !$this->isActive() || $this->restart();
+	}
+
+	/**
+	 * A pool config with user, group, listen.owner and listen.group set. Commented-out directives are
+	 * uncommented in place; missing ones are added at the end of the pool.
+	 */
+	public static function withPoolUser(string $contents, string $user, string $group): string
+	{
+		$values = ['user' => $user, 'group' => $group, 'listen.owner' => $user, 'listen.group' => $group];
+
+		foreach ($values as $key => $value) {
+			$pattern = '/^[ \t]*;?[ \t]*' . preg_quote($key, '/') . '[ \t]*=.*$/m';
+			$line = "$key = $value";
+
+			// An active directive wins over a commented-out one
+			$active = '/^[ \t]*' . preg_quote($key, '/') . '[ \t]*=.*$/m';
+			if (preg_match($active, $contents)) {
+				$contents = preg_replace($active, $line, $contents, 1);
+			} elseif (preg_match($pattern, $contents)) {
+				$contents = preg_replace($pattern, $line, $contents, 1);
+			} else {
+				$contents = rtrim($contents, "\n") . "\n" . $line . "\n";
+			}
+		}
+
+		return $contents;
+	}
+
+	/**
+	 * The pool's user and socket owner as configured (null when unset).
+	 *
+	 * @return array{user: ?string, listen.owner: ?string}
+	 */
+	public function poolUser(): array
+	{
+		$contents = @file_get_contents($this->poolFile()) ?: '';
+		$value = fn (string $key) => preg_match('/^[ \t]*' . preg_quote($key, '/') . '[ \t]*=[ \t]*(\S+)/m', $contents, $m) ? $m[1] : null;
+
+		return ['user' => $value('user'), 'listen.owner' => $value('listen.owner')];
+	}
+
+	/**
+	 * Validates the FPM configuration. Returns the error output on failure.
+	 */
+	public function test(): true|string
+	{
+		$process = Process::run(['sudo', "php-fpm{$this->version}", '-t']);
+		return $process->successful() ? true : trim($process->errorOutput() . "\n" . $process->output());
+	}
+	#endregion
 
 	public static function isValidVersion(string $version): bool
 	{

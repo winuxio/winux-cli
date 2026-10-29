@@ -3,11 +3,12 @@
 namespace App\Services;
 
 use App\Classes\AptRepository;
+use App\Classes\Platform;
 use App\Classes\Settings;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\{error, warning};
+use function Laravel\Prompts\{alert, error, info, warning};
 
 class Postgres extends Service
 {
@@ -65,6 +66,63 @@ class Postgres extends Service
 	{
 		static::$clusters = null;
 		return true;
+	}
+
+	/**
+	 * postgresql@16-main is a systemd template unit; without systemd there's no init script by that
+	 * name, so the cluster is driven with pg_ctlcluster (postgresql-common) instead.
+	 */
+	public function controlCommand(string $command): array
+	{
+		return Platform::hasSystemd()
+			? ['sudo', 'systemctl', $command, $this->serviceName()]
+			: ['sudo', 'pg_ctlcluster', $this->version, 'main', $command];
+	}
+
+	protected function control(string $command): bool
+	{
+		$commandParts = $this->controlCommand($command);
+		info('Running command: ' . implode(' ', $commandParts));
+		$process = Process::timeout(120)->run($commandParts);
+		static::$clusters = null;
+
+		if ($process->failed()) {
+			alert("Failed to $command {$this->label()}.");
+			error($process->errorOutput());
+			return false;
+		}
+
+		return true;
+	}
+
+	public function isActive(): bool
+	{
+		if (Platform::hasSystemd()) {
+			return parent::isActive();
+		}
+
+		// pg_ctlcluster status exits 0 when the cluster is running, 3 when it's stopped
+		return Process::run(['pg_ctlcluster', $this->version, 'main', 'status'])->successful();
+	}
+
+	/**
+	 * Why a requested Postgres version (e.g. from --pg) can't be used, or null if it's installed.
+	 */
+	public static function versionError(?string $version): ?string
+	{
+		$installed = static::installedVersions();
+		$available = $installed ? 'Installed: ' . implode(', ', $installed) . '.' : 'No Postgres versions are installed yet.';
+
+		if ($version !== null && !preg_match('/^\d+$/', $version)) {
+			return "'$version' isn't a Postgres version (expected something like 16). $available";
+		}
+
+		$version ??= static::defaultVersion();
+		if (!in_array($version, $installed, true)) {
+			return "Postgres $version isn't installed. $available Install it with `winux service:install postgres $version`.";
+		}
+
+		return null;
 	}
 
 	public function getPort(): int

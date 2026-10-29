@@ -11,14 +11,24 @@ class Platform
 {
 	protected static ?array $osRelease = null;
 
+	protected static ?bool $wsl = null;
+
+	protected static ?bool $systemd = null;
+
+	/**
+	 * True inside a real WSL distro, where Windows (powershell.exe, the Windows hosts file) is reachable.
+	 * A WSL kernel alone isn't enough: Docker containers on WSL also report "microsoft" in
+	 * /proc/version, but have no interop with Windows.
+	 */
 	public static function isWsl(): bool
 	{
-		if (getenv('WSL_DISTRO_NAME')) {
-			return true;
+		if (static::$wsl !== null) {
+			return static::$wsl;
 		}
 
-		$version = @file_get_contents('/proc/version') ?: '';
-		return stripos($version, 'microsoft') !== false;
+		return getenv('WSL_DISTRO_NAME') !== false && getenv('WSL_DISTRO_NAME') !== ''
+			|| is_dir('/run/WSL')
+			|| !empty(glob('/proc/sys/fs/binfmt_misc/WSLInterop*'));
 	}
 
 	public static function osRelease(): array
@@ -73,7 +83,7 @@ class Platform
 
 	public static function hasSystemd(): bool
 	{
-		return is_dir('/run/systemd/system');
+		return static::$systemd ?? is_dir('/run/systemd/system');
 	}
 
 	public static function commandExists(string $command): bool
@@ -85,5 +95,12 @@ class Platform
 	public static function fake(array $osRelease): void
 	{
 		static::$osRelease = $osRelease;
+	}
+
+	/** For tests; null goes back to detecting */
+	public static function fakeEnvironment(?bool $wsl = null, ?bool $systemd = null): void
+	{
+		static::$wsl = $wsl;
+		static::$systemd = $systemd;
 	}
 }

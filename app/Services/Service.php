@@ -127,7 +127,15 @@ abstract class Service
 		if (!$this->postInstall()) return false;
 
 		if (Platform::hasSystemd()) {
-			Process::run(['sudo', 'systemctl', 'enable', '--now', $this->serviceName()]);
+			$process = Process::timeout(120)->run(['sudo', 'systemctl', 'enable', '--now', $this->serviceName()]);
+			if ($process->failed()) {
+				alert("{$this->label()} was installed, but failed to start.");
+				error($process->errorOutput());
+				return false;
+			}
+		} elseif (!$this->isActive() && !$this->start()) {
+			// Without systemd nothing starts it at boot either; `winux service:start` brings it back
+			return false;
 		}
 
 		info("{$this->label()} installed successfully!");

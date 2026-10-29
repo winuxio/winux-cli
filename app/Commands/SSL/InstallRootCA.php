@@ -6,7 +6,7 @@ use App\Classes\Mkcert;
 use App\Classes\Platform;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{info, note};
+use function Laravel\Prompts\{info, note, warning};
 
 class InstallRootCA extends Command
 {
@@ -27,8 +27,10 @@ class InstallRootCA extends Command
 		if (Platform::isWsl() && !$this->option('skip-windows')) {
 			if (Mkcert::isTrustedByWindows()) {
 				info('Windows already trusts the root CA.');
-			} else {
-				$ok = Mkcert::installWindowsTrust() && $ok;
+			} elseif (!Mkcert::installWindowsTrust()) {
+				// Sites still work inside WSL; only Windows browsers will warn until this is done
+				warning('Windows doesn\'t trust the root CA yet, so browsers on Windows will show certificate warnings.');
+				note('Run `winux ssl:root:install` again once Windows is reachable (and accept its prompt), or import ' . Mkcert::rootCert() . ' into "Trusted Root Certification Authorities" for your Windows user.');
 			}
 			note('Firefox on Windows: set security.enterprise_roots.enabled to true in about:config if it still warns.');
 		}
