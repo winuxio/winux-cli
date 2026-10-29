@@ -18,14 +18,14 @@ trait PreparesProject
 {
 	use ManagesHostsEntries;
 
-	protected function prepareProject(string $name): ?Project
+	protected function prepareProject(string $name, ?string $directory = null): ?Project
 	{
-		if ($reason = Project::validationError($name)) {
+		if ($reason = Project::validationError($name, $directory)) {
 			error($reason);
 			return null;
 		}
 
-		$project = Project::create($name, $this->option('php'), $this->option('pg'));
+		$project = Project::create($name, $this->option('php'), $this->option('pg'), $directory);
 
 		if (!PhpFpm::isValidVersion($project->phpVersion)) {
 			error("'{$project->phpVersion}' isn't a PHP version (expected something like 8.4).");

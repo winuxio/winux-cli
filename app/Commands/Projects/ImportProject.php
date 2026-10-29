@@ -14,7 +14,7 @@ class ImportProject extends Command
 	use PreparesProject;
 
 	protected $signature = 'project:import
-		{projectName : The project directory (in the current directory) to configure}
+		{projectName? : The project to configure: a directory in the current one, a path, or . (the default) for the current directory}
 		{--php= : PHP version (defaults to `winux php:default`)}
 		{--pg= : Postgres version (defaults to the one matching DB_PORT in .env, then `winux postgres:default`)}
 		{--domain=* : Extra domains the site should also answer to}
@@ -24,17 +24,26 @@ class ImportProject extends Command
 
 	public function handle(): int
 	{
-		$projectName = $this->argument('projectName');
+		$target = $this->resolveTarget($this->argument('projectName'));
+		if (!$target) {
+			return self::FAILURE;
+		}
 
 		Winux::SetupEnvironment();
 
-		$project = $this->prepareProject($projectName);
+		$project = $this->prepareProject(...$target);
 		if (!$project) {
 			return self::FAILURE;
 		}
 
 		if (!is_dir($project->path)) {
 			error("No project directory at {$project->path}.");
+			return self::FAILURE;
+		}
+
+		// .env is configured from .env.example when it's missing; with neither, this isn't a Laravel app to import
+		if (!is_file("{$project->path}/.env") && !is_file("{$project->path}/.env.example")) {
+			error("{$project->path} has no .env or .env.example. Is it a Laravel project?");
 			return self::FAILURE;
 		}
 
@@ -96,5 +105,32 @@ class ImportProject extends Command
 		$this->reportExtraDomains($project);
 
 		return self::SUCCESS;
+	}
+
+	/**
+	 * The project name and the directory holding it. A bare name is a directory in the current one;
+	 * `.` (or nothing) and paths like ../app or ~/dev/app are resolved to the real directory.
+	 *
+	 * @return array{0: string, 1: string}|null
+	 */
+	protected function resolveTarget(?string $target): ?array
+	{
+		$target ??= '.';
+		if (!str_contains($target, '/') && !in_array($target, ['.', '..', '~'], true)) {
+			return [$target, getcwd()];
+		}
+
+		$expanded = preg_replace('#^~(?=/|$)#', rtrim((string) config('winux.paths.home'), '/'), $target);
+		$path = realpath($expanded);
+		if ($path === false || !is_dir($path)) {
+			error("No project directory at $target.");
+			return null;
+		}
+		if ($path === '/') {
+			error("Can't import / as a project.");
+			return null;
+		}
+
+		return [basename($path), dirname($path)];
 	}
 }

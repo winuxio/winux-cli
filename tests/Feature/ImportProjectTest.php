@@ -229,3 +229,32 @@ it('grants access instead of taking ownership of a database another role owns', 
 		->and($queries)->toContain('GRANT ALL PRIVILEGES ON DATABASE "shop_dev" TO "shop_user"')
 		->and($queries)->toContain('GRANT ALL ON SCHEMA public TO "shop_user"');
 });
+
+it('imports the current directory with . or no name', function (?string $target) {
+	fakeImportProcesses(['envLoginWorks' => true, 'databases' => ['shop_dev'], 'users' => ['shop_user']]);
+	chdir($this->project);
+
+	$arguments = ['--no-interaction' => true] + ($target === null ? [] : ['projectName' => $target]);
+	$this->artisan('project:import', $arguments)->assertSuccessful();
+
+	expect(File::get("{$this->root}/.winux/sites/available/shop.local.winux.io"))->toContain(realpath($this->project) . '/public')
+		->and(File::get("{$this->project}/.env"))->toContain('APP_URL="https://shop.local.winux.io"');
+})->with(['dot' => '.', 'no name' => null]);
+
+it('imports a project by path from another directory', function () {
+	fakeImportProcesses(['envLoginWorks' => true, 'databases' => ['shop_dev'], 'users' => ['shop_user']]);
+	File::ensureDirectoryExists("{$this->root}/elsewhere");
+	chdir("{$this->root}/elsewhere");
+
+	$this->artisan('project:import', ['projectName' => '../work/shop/', '--no-interaction' => true])->assertSuccessful();
+
+	expect(File::get("{$this->root}/.winux/sites/available/shop.local.winux.io"))->toContain(realpath($this->project) . '/public');
+});
+
+it('refuses a path that does not exist', function () {
+	fakeImportProcesses(['envLoginWorks' => true, 'databases' => [], 'users' => []]);
+
+	$this->artisan('project:import', ['projectName' => './nope', '--no-interaction' => true])
+		->expectsOutputToContain('No project directory at ./nope.')
+		->assertFailed();
+});

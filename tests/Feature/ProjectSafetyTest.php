@@ -97,6 +97,10 @@ it('rejects project names that would not map cleanly to a directory, domain, and
 	fakeProjectProcesses();
 
 	foreach (['project:create', 'project:import', 'project:delete', 'nginx:create'] as $command) {
+		// project:import takes paths too; those are covered below
+		if ($command === 'project:import' && ($name === '..' || str_contains($name, '/'))) {
+			continue;
+		}
 		expect(Artisan::call($command, ['projectName' => $name, '--no-interaction' => true]))->toBe(1)
 			->and(Artisan::output())->toContain("isn't a valid project name");
 	}
@@ -104,6 +108,17 @@ it('rejects project names that would not map cleanly to a directory, domain, and
 	expect(ranCommand('create-project'))->toBeFalse()
 		->and(superuserStatements())->toBe([]);
 })->with(['my app', 'foo/bar', '..', '.hidden', '-app', 'app_', 'my.app', 'café']);
+
+it('refuses to import a path that is not a Laravel project', function (string $path) {
+	fakeProjectProcesses();
+	File::ensureDirectoryExists(getcwd() . '/foo/bar');
+
+	expect(Artisan::call('project:import', ['projectName' => $path, '--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('has no .env or .env.example');
+
+	expect(glob("{$this->root}/.winux/sites/available/*"))->toBe([])
+		->and(superuserStatements())->toBe([]);
+})->with(['..', 'foo/bar']);
 
 it('accepts letters, digits, hyphens and underscores', function () {
 	expect(Project::nameError('my-app'))->toBeNull()
@@ -184,6 +199,7 @@ it('refuses to import onto the project-named database when another project uses 
 	legacySite($this->root, 'my_app');
 	writeEnv("{$this->root}/projects/my_app", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5433', 'DB_DATABASE' => 'my_app', 'DB_USERNAME' => 'my_app']);
 	File::ensureDirectoryExists("{$this->root}/work/my-app/public");
+	File::put("{$this->root}/work/my-app/.env.example", "APP_NAME=Laravel\n");
 
 	expect(Artisan::call('project:import', ['projectName' => 'my-app', '--no-interaction' => true]))->toBe(1)
 		->and(Artisan::output())->toContain('is used by my_app.local.winux.io');
