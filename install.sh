@@ -115,12 +115,26 @@ sudo install -m 0755 "$tmp_dir/winux" "$WINUX_BIN"
 
 # Earlier versions installed to /usr/sbin
 if [ -f /usr/sbin/winux ] && [ "$WINUX_BIN" != /usr/sbin/winux ]; then
-	warn "An older winux exists at /usr/sbin/winux. Remove it with: sudo rm /usr/sbin/winux"
+	answer=""
+	# stdin is this script under `curl | bash`, so ask on the terminal (if there is one)
+	{ read -r -p "Remove the older winux at /usr/sbin/winux? [Y/n] " answer </dev/tty; } 2>/dev/null || answer="skip"
+	case "$answer" in
+		""|[Yy]*) sudo rm -f /usr/sbin/winux && info "Removed /usr/sbin/winux" ;;
+		*) warn "An older winux remains at /usr/sbin/winux. Remove it with: sudo rm /usr/sbin/winux" ;;
+	esac
 fi
 
 info "Installed winux $("$WINUX_BIN" --version --no-ansi 2>/dev/null | grep -oE 'v?[0-9]+\.[0-9]+\.[0-9][^ ]*' | head -n1) to $WINUX_BIN"
 echo
-echo "Next, set up your stack (nginx, PHP, Postgres, Redis, SSL):"
+if [ -d "$HOME/.winux/sites" ]; then
+	echo "Your existing sites and certificates are kept. Check everything is healthy with:"
+	echo
+	echo "    winux doctor"
+else
+	echo "Next, set up your stack (nginx, PHP, Postgres, Redis, SSL):"
+	echo
+	echo "    winux setup"
+fi
 echo
-echo "    winux setup"
+echo "Later, update with: winux self-update"
 echo
