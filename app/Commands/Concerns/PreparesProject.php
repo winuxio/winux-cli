@@ -18,6 +18,42 @@ trait PreparesProject
 {
 	use ManagesHostsEntries;
 
+	/**
+	 * The project name and the directory holding it. A bare name is a directory in the current one;
+	 * `.` and paths like ../app or ~/dev/app are resolved to the real directory.
+	 *
+	 * @param bool $mustExist Whether the project directory itself must exist (import), or only its parent (create)
+	 * @return array{0: string, 1: string}|null
+	 */
+	protected function resolveTarget(string $target, bool $mustExist): ?array
+	{
+		if (!str_contains($target, '/') && !in_array($target, ['.', '..', '~'], true)) {
+			return [$target, getcwd()];
+		}
+
+		$home = rtrim((string) config('winux.paths.home'), '/');
+		$expanded = rtrim(preg_replace('#^~(?=/|$)#', $home, $target), '/') ?: '/';
+
+		// A new project's directory may not exist yet, but where it goes must
+		$path = realpath($expanded);
+		if ($path === false && !$mustExist && ($parent = realpath(dirname($expanded))) !== false) {
+			$path = rtrim($parent, '/') . '/' . basename($expanded);
+		}
+
+		if ($path === false || ($mustExist && !is_dir($path)) || (!$mustExist && file_exists($path) && !is_dir($path))) {
+			error($mustExist || $path === false ? "No project directory at $target." : "$target isn't a directory.");
+			return null;
+		}
+
+		// The whole home directory (or /home, /) is never a project
+		if ($path === $home || substr_count($path, '/') < 2) {
+			error("Refusing to use $path as a project directory; make a directory for the project instead.");
+			return null;
+		}
+
+		return [basename($path), dirname($path)];
+	}
+
 	protected function prepareProject(string $name, ?string $directory = null): ?Project
 	{
 		if ($reason = Project::validationError($name, $directory)) {
