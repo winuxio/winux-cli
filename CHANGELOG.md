@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.1](https://github.com/winuxio/winux-cli/compare/v0.3.0...v0.3.1) (2026-10-29)
+
+
+### Features
+
+* color the doctor's check marks green and red ([#17](https://github.com/winuxio/winux-cli/issues/17)) ([4ef3dee](https://github.com/winuxio/winux-cli/commit/4ef3dee262797450a60471c43a226078235c176f))
+
+
+### Bug Fixes
+
+* show the remove-old-winux prompt in install.sh ([#16](https://github.com/winuxio/winux-cli/issues/16)) ([4451d7c](https://github.com/winuxio/winux-cli/commit/4451d7cab7db621e57e1c179199b9d61de5f2ea1))
+
 ## [0.3.0](https://github.com/winuxio/winux-cli/compare/v0.2.0...v0.3.0) (2026-10-29)
 
 
