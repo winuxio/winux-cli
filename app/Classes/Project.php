@@ -549,9 +549,10 @@ class Project
 	 *
 	 * @param Packages[] $packages
 	 */
-	public function installAdditionalPackages(array $packages, bool $commit = true): bool
+	public function installAdditionalPackages(array $packages, bool $commit = true, bool $migrate = false): bool
 	{
 		$success = true;
+		$migrations = false;
 
 		foreach ($packages as $package) {
 			info("Installing {$package->label()}...");
@@ -559,9 +560,20 @@ class Project
 				$success = false;
 				continue;
 			}
+			$migrations = $migrations || $package->addsMigrations();
 
 			if ($commit && $this->hasRepo) {
 				$this->gitCommit("Installed {$package->label()}");
+			}
+		}
+
+		if ($migrate && $migrations) {
+			info("Running the packages' migrations...");
+			$process = Process::path($this->path)->forever()->run([$this->phpBinary(), 'artisan', 'migrate', '--force', '--no-interaction']);
+			if ($process->failed()) {
+				error("The packages' migrations failed; run `php artisan migrate` in {$this->path} once it's fixed.");
+				warning($process->errorOutput() ?: $process->output());
+				$success = false;
 			}
 		}
 

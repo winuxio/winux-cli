@@ -110,15 +110,39 @@ Creating or importing a project:
 - updates `.env`
 - offers to run migrations, and to open your editor and browser
 
-`project:create` also offers to create a git repository (and a GitHub repository with [`gh`](https://cli.github.com/)) and to install Filament. Every question has an option, so it can run unattended:
+`project:create` also offers to create a git repository (and a GitHub repository with [`gh`](https://cli.github.com/)) and to install extra packages. Every question has an option, so it can run unattended:
 
 ```bash
 winux project:create my-app --git                  # git init + initial commit
 winux project:create my-app --github=private       # ...and a private GitHub repo (implies --git; or public)
 winux project:create my-app --filament             # install Filament (same as --package=filament)
+winux project:create my-app --package=boost --package=horizon  # any of the packages below
 winux project:create my-app --migrate              # run migrations without asking
 winux project:create my-app -n                     # no questions: migrations run; no git, GitHub, packages, editor or browser
 ```
+
+The packages, each the newest version compatible with the app (`--package=<name>`):
+
+| Name | Installs |
+| --- | --- |
+| `filament` | Filament, with an admin panel |
+| `boost` | Laravel Boost: AI guidelines, skills and MCP config (dev) |
+| `pao` | Laravel Pao: agent-friendly test output (dev) |
+| `larastan` | Larastan (dev), with a `phpstan.neon` at level 5 if there isn't one |
+| `telescope` | Telescope |
+| `horizon` | Horizon |
+| `pulse` | Pulse, with its config and migrations |
+| `sentry` | Sentry, hooked into `bootstrap/app.php` (set `SENTRY_LARAVEL_DSN`) |
+| `reverb` | Reverb via `install:broadcasting`, plus Echo's npm packages when `npm` is available |
+| `sanctum` | Sanctum and `routes/api.php` via `install:api` |
+| `passport` | Passport via `install:api --passport` |
+| `saloon` | Saloon and its Laravel plugin |
+| `socialment` | Socialment, added to the Filament panel (installs Filament too) |
+| `fontawesome` | Blade Font Awesome |
+| `s3` | The S3 filesystem driver |
+| `activitylog` | spatie/laravel-activitylog, with its migration |
+
+Each package is committed separately when the project has a repository, and migrations the packages add are run afterwards.
 
 `project:create` accepts a name (created in the current directory), a path, or `.`, and asks for a name when you leave it out. The directory can already have files, say a README, some docs, and a `.git`. In that case, Laravel is installed beside it first and then moved in around your files, and nothing of yours is overwritten. Your `README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitattributes` and `.editorconfig` are kept, and `.gitignore` gains Laravel's missing rules. If anything else clashes (say your own `public/`), it stops before changing anything. An existing repository gets the app as a new commit rather than a `git init`, and one that already has a remote skips creating a GitHub repository.
 
