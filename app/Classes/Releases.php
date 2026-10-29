@@ -19,6 +19,9 @@ class Releases
 {
 	public const CHANNELS = ['stable', 'beta'];
 
+	/** Every release from this version on publishes a winux.sha256, so a missing one is an error */
+	public const CHECKSUMS_SINCE = '0.2.0';
+
 	/**
 	 * Published releases that have a binary, newest first.
 	 *
@@ -85,12 +88,17 @@ class Releases
 
 	/**
 	 * Downloads a release's binary to a temp file and verifies its checksum.
-	 * Returns the path, and whether a checksum was available to verify against.
+	 * Returns the path, and whether a checksum was available to verify against: only releases
+	 * older than CHECKSUMS_SINCE may lack one.
 	 *
 	 * @return array{0: string, 1: bool}
 	 */
 	public static function download(array $release): array
 	{
+		if ($release['checksum'] === null && version_compare($release['version'], static::CHECKSUMS_SINCE, '>=')) {
+			throw new RuntimeException("winux {$release['version']} has no published checksum, so it can't be verified.");
+		}
+
 		$binary = static::send(new DownloadAssetRequest(static::repository(), $release['binary']))->body();
 
 		$verified = false;
