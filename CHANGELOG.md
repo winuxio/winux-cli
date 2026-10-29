@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.3](https://github.com/winuxio/winux-cli/compare/v0.3.2...v0.3.3) (2026-10-29)
+
+
+### Features
+
+* create a project in a directory that already has files ([#21](https://github.com/winuxio/winux-cli/issues/21)) ([6c8583c](https://github.com/winuxio/winux-cli/commit/6c8583c80bdb63f40864ff29b93dc85f3ec87627))
+
 ## [0.3.2](https://github.com/winuxio/winux-cli/compare/v0.3.1...v0.3.2) (2026-10-29)
 
 
