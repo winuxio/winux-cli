@@ -24,6 +24,15 @@ it('lists sites with their php version and path', function () {
 		->toContain("{$this->root}/projects/legacy-app");
 });
 
+it('keeps a separate backup for each edit, even within the same second', function () {
+	$site = Site::find('legacy-app');
+
+	expect($site->setPhpVersion('8.3'))->toBeTrue()
+		->and($site->setPhpVersion('8.4'))->toBeTrue()
+		->and($site->setPhpVersion('8.3'))->toBeTrue()
+		->and(File::glob("{$this->root}/.winux/backups/{$this->domain}.*.conf"))->toHaveCount(3);
+});
+
 it('switches a site to another installed php version', function () {
 	$this->artisan('site:php', ['version' => '8.3', '--site' => 'legacy-app'])->assertSuccessful();
 
