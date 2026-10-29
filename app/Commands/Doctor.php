@@ -84,7 +84,7 @@ class Doctor extends Command
 
 		table(
 			['Check', 'OK', 'Details'],
-			collect($this->checks)->map(fn ($check) => [$check[0], $check[1] ? '✓' : '✗', $check[2]])->all()
+			collect($this->checks)->map(fn ($check) => [$check[0], $check[1] ? '<fg=green>✓</>' : '<fg=red;options=bold>✗</>', $check[2]])->all()
 		);
 
 		$failures = collect($this->checks)->reject(fn ($check) => $check[1]);
