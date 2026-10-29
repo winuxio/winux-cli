@@ -166,14 +166,16 @@ class CreateProject extends Command
 
 		if (!$packages && $interactive) {
 			$chosen = multiselect(
-				'Install any additional packages? (More coming!)',
-				collect(Packages::cases())->mapWithKeys(fn ($package) => [$package->value => $package->label()])->all(),
+				'Install any additional packages?',
+				collect(Packages::cases())->mapWithKeys(fn ($package) => [$package->value => "{$package->label()} ({$package->description()})"])->all(),
+				scroll: 16,
 				hint: 'Press space to select, enter to continue',
 			);
 			$packages = array_map(fn ($value) => Packages::from($value), $chosen);
 		}
 
-		if ($packages && !$project->installAdditionalPackages(array_values($packages))) {
+		// Packages' migrations run too, unless the app's own failed
+		if ($packages && !$project->installAdditionalPackages(Packages::resolve(array_values($packages)), migrate: $migrated)) {
 			$problems[] = 'some packages failed to install';
 		}
 
