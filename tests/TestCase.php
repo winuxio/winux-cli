@@ -24,6 +24,7 @@ abstract class TestCase extends BaseTestCase
         \Laravel\Prompts\Prompt::interactive(false);
 
         \App\Classes\Platform::fakeEnvironment();
+        \App\Classes\Platform::fake(null);
         \App\Classes\ServiceUser::fake(null);
     }
 
