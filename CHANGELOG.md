@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0](https://github.com/winuxio/winux-cli/compare/v0.2.0...v0.3.0) (2026-10-29)
+
+
+### Features
+
+* add site:permissions to hand a site's files back to you ([d772733](https://github.com/winuxio/winux-cli/commit/d77273308bfcd0147c78783c4b3e6cfe11c38441))
+
+
+### Bug Fixes
+
+* check postgres cluster status with pg_lsclusters without systemd ([2d16eda](https://github.com/winuxio/winux-cli/commit/2d16eda9dae6f6b04be6aae65f757f3b5ff69e30))
+* clean errors instead of crashes and silent failures in smaller commands ([c493b2c](https://github.com/winuxio/winux-cli/commit/c493b2c83bee7ca01c37b143419c1038103819ef))
+* harden releases, install.sh and self-update ([#13](https://github.com/winuxio/winux-cli/issues/13)) ([469cf6d](https://github.com/winuxio/winux-cli/commit/469cf6d147b65d5c56f67d0e72c9598b1e1a3408))
+* keep the drop-database warning visible in project:delete ([f77ea79](https://github.com/winuxio/winux-cli/commit/f77ea792b2c66d3167f751388511366b7a67dd18))
+* make project:create scriptable, finish imports, and guard site:php ([46ae63f](https://github.com/winuxio/winux-cli/commit/46ae63f40f0eb47405b3dec6c968a69d32fed486))
+* run nginx and PHP-FPM as the winux user, and make setup work without Windows ([207c5bb](https://github.com/winuxio/winux-cli/commit/207c5bbd8434929fc018349093ba4fd8dee62454))
+* validate project names and protect databases and nginx on create, import and delete ([#12](https://github.com/winuxio/winux-cli/issues/12)) ([0d409fb](https://github.com/winuxio/winux-cli/commit/0d409fb6f1d09552df75553627160c70ce6d21c2))
+
 ## [0.2.0](https://github.com/winuxio/winux-cli/compare/v0.1.1...v0.2.0) (2026-10-29)
 
 
