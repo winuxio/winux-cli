@@ -10,6 +10,15 @@ abstract class TestCase extends BaseTestCase
 
     public ?string $sandboxRoot = null;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        // config/app.php hardcodes the environment; 'testing' makes Laravel Prompts fall back
+        // to questions that expectsConfirmation()/expectsQuestion() can answer
+        $this->app['env'] = 'testing';
+    }
+
     protected function tearDown(): void
     {
         if ($this->sandboxRoot && is_dir($this->sandboxRoot)) {

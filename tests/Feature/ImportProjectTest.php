@@ -125,7 +125,9 @@ it('reuses the database when the credentials in .env already work', function () 
 it('keeps the existing database and resets the user password when .env is stale', function () {
 	fakeImportProcesses(['envLoginWorks' => false, 'databases' => ['shop_dev'], 'users' => ['shop_user']]);
 
-	$this->artisan('project:import', ['projectName' => 'shop', '--no-interaction' => true])->assertSuccessful();
+	$this->artisan('project:import', ['projectName' => 'shop', '--no-interaction' => true])
+		->expectsConfirmation("Reset 'shop_user''s password and save it to .env?", 'yes')
+		->assertSuccessful();
 
 	$queries = postgresQueries();
 	expect(collect($queries)->contains(fn ($q) => str_starts_with($q, 'CREATE')))->toBeFalse()
@@ -218,7 +220,9 @@ it('refuses to reset the password of a superuser from .env', function (string $u
 it('grants access instead of taking ownership of a database another role owns', function () {
 	fakeImportProcesses(['envLoginWorks' => false, 'databases' => ['shop_dev'], 'users' => ['shop_user'], 'owners' => ['shop_dev' => 'alice']]);
 
-	$this->artisan('project:import', ['projectName' => 'shop', '--no-interaction' => true])->assertSuccessful();
+	$this->artisan('project:import', ['projectName' => 'shop', '--no-interaction' => true])
+		->expectsConfirmation("Reset 'shop_user''s password and save it to .env?", 'yes')
+		->assertSuccessful();
 
 	$queries = postgresQueries();
 	expect(collect($queries)->contains(fn ($q) => str_contains($q, 'OWNER TO')))->toBeFalse()

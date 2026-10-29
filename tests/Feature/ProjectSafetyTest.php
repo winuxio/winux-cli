@@ -169,7 +169,7 @@ it('drops the database and user from .env, not the ones named after the project'
 	fakeProjectProcesses(['databases' => ['shop', 'shop_dev'], 'users' => ['shop', 'shop_user']]);
 	writeEnv("{$this->root}/work/shop", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5433', 'DB_DATABASE' => 'shop_dev', 'DB_USERNAME' => 'shop_user']);
 
-	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--no-interaction' => true]))->toBe(0)
+	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--delete-database' => true, '--no-interaction' => true]))->toBe(0)
 		->and(Artisan::output())->toContain("the database 'shop_dev' on Postgres 16")->toContain("the Postgres user 'shop_user'");
 
 	expect(superuserStatements())->toBe([
@@ -185,7 +185,7 @@ it('never drops the postgres database or a superuser', function (string $user) {
 	fakeProjectProcesses(['databases' => ['postgres'], 'users' => ['postgres', 'admin'], 'superusers' => ['postgres', 'admin']]);
 	writeEnv("{$this->root}/work/shop", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5433', 'DB_DATABASE' => 'postgres', 'DB_USERNAME' => $user]);
 
-	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--no-interaction' => true]))->toBe(0)
+	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--delete-database' => true, '--no-interaction' => true]))->toBe(0)
 		->and(Artisan::output())->toContain("Keeping the built-in database 'postgres'")->toContain("Keeping the superuser '$user'");
 
 	expect(superuserStatements())->toBe([]);
@@ -208,7 +208,7 @@ it('cleans up the site, certificate, and database after the directory is gone', 
 	File::ensureDirectoryExists("{$this->root}/.winux/ssl/certs/$domain");
 	chdir("{$this->root}/projects");
 
-	expect(Artisan::call('project:delete', ['projectName' => 'gone', '--force' => true, '--no-interaction' => true]))->toBe(0)
+	expect(Artisan::call('project:delete', ['projectName' => 'gone', '--force' => true, '--delete-database' => true, '--no-interaction' => true]))->toBe(0)
 		->and(Artisan::output())->toContain("doesn't exist")->toContain("the nginx site $domain");
 
 	expect(Site::make($domain)->exists())->toBeFalse()
@@ -216,6 +216,31 @@ it('cleans up the site, certificate, and database after the directory is gone', 
 		->and(is_dir("{$this->root}/.winux/ssl/certs/$domain"))->toBeFalse()
 		->and(superuserStatements())->toContain('DROP DATABASE IF EXISTS "gone" WITH (FORCE)');
 });
+
+it('keeps the database unless asked to drop it', function () {
+	fakeProjectProcesses(['databases' => ['shop'], 'users' => ['shop']]);
+	File::ensureDirectoryExists("{$this->root}/work/shop");
+
+	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--no-interaction' => true]))->toBe(0)
+		->and(Artisan::output())->toContain("Keeping the database 'shop' on Postgres 16 and the Postgres user 'shop'")
+		->toContain('winux postgres:delete shop --pg=16');
+
+	expect(superuserStatements())->toBe([]);
+});
+
+it('asks before dropping the database', function (bool $answer) {
+	fakeProjectProcesses(['databases' => ['shop'], 'users' => ['shop']]);
+	File::ensureDirectoryExists("{$this->root}/work/shop");
+
+	$this->artisan('project:delete', ['projectName' => 'shop'])
+		->expectsConfirmation('Are you sure?', 'yes')
+		->expectsQuestion("If you're absolutely sure, type 'shop' below.", 'shop')
+		->expectsConfirmation("Drop the database 'shop' on Postgres 16 and the Postgres user 'shop'? Its data is gone for good.", $answer ? 'yes' : 'no')
+		->expectsConfirmation("Do you want to delete the project directory at '{$this->root}/work/shop'?", 'no')
+		->assertSuccessful();
+
+	expect(collect(superuserStatements())->contains(fn ($sql) => str_starts_with($sql, 'DROP DATABASE')))->toBe($answer);
+})->with(['drop' => true, 'keep' => false]);
 
 it('needs --force to delete without prompts', function () {
 	fakeProjectProcesses(['databases' => ['shop'], 'users' => ['shop']]);
@@ -246,7 +271,7 @@ it('fails when part of the deletion fails', function () {
 	});
 	File::ensureDirectoryExists("{$this->root}/work/shop");
 
-	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--no-interaction' => true]))->toBe(1);
+	expect(Artisan::call('project:delete', ['projectName' => 'shop', '--force' => true, '--delete-database' => true, '--no-interaction' => true]))->toBe(1);
 });
 #endregion
 

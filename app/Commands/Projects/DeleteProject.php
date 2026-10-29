@@ -16,8 +16,9 @@ class DeleteProject extends Command
 	 * @var string
 	 */
 	protected $signature = 'project:delete
-		{projectName : The project directory (in the current directory) whose site, certificate, and database are deleted}
+		{projectName : The project directory (in the current directory) whose site and certificate are deleted}
 		{--force : Skip the confirmations}
+		{--delete-database : Also drop the project\'s database and Postgres user (otherwise you are asked, and they are kept by default)}
 		{--delete-files : Also delete the project directory (otherwise you are asked, and it is kept by default)}';
 
 	/**
@@ -25,7 +26,7 @@ class DeleteProject extends Command
 	 *
 	 * @var string
 	 */
-	protected $description = "Delete a project's site, certificate, and database (and optionally its files)";
+	protected $description = "Delete a project's site and certificate (and optionally its database and files)";
 
 	/**
 	 * Execute the console command.
@@ -49,6 +50,8 @@ class DeleteProject extends Command
 		$plan = array_filter([
 			$hasSite ? "the nginx site {$project->getDomain()}" : null,
 			$hasCertificate ? "the certificate for {$project->getDomain()}" : null,
+		]);
+		$databaseItems = array_filter([
 			$database['database'] ? "the database '{$database['database']}' on Postgres {$database['version']}" : null,
 			$database['username'] ? "the Postgres user '{$database['username']}'" : null,
 		]);
@@ -61,14 +64,25 @@ class DeleteProject extends Command
 			warning("The project directory {$project->path} doesn't exist.");
 		}
 
-		if (empty($plan) && !$hasDirectory) {
+		if (empty($plan) && empty($databaseItems) && !$hasDirectory) {
 			error("Nothing to delete for '{$project->name}'.");
 			return self::FAILURE;
 		}
 
 		info("Preparing to delete '{$project->name}'" . ($hasDirectory ? " at {$project->path}" : '') . '. This removes:');
-		foreach ($plan ?: ['nothing but (optionally) the project directory'] as $item) {
+		foreach ($plan ?: ['nothing else'] as $item) {
 			$this->line("  - $item");
+		}
+
+		$optional = array_filter([
+			...$databaseItems,
+			$hasDirectory ? "the project directory {$project->path}" : null,
+		]);
+		if ($optional) {
+			$this->line('  and, only if you choose to (or pass --delete-database / --delete-files):');
+			foreach ($optional as $item) {
+				$this->line("  - $item");
+			}
 		}
 
 		if (!$this->option('force')) {
@@ -82,6 +96,22 @@ class DeleteProject extends Command
 				warning('Names did not match. Project NOT deleted.');
 				return self::FAILURE;
 			}
+		}
+
+		$deleteDatabase = false;
+		if ($databaseItems) {
+			$deleteDatabase = $this->option('delete-database');
+			if (!$deleteDatabase && $this->input->isInteractive()) {
+				$deleteDatabase = confirm('Drop ' . implode(' and ', $databaseItems) . '? Its data is gone for good.', false);
+			}
+		}
+
+		if (!$deleteDatabase && $databaseItems) {
+			$sameName = in_array($database['username'], [null, $database['database']], true) && $database['database'];
+			note('Keeping ' . implode(' and ', $databaseItems) . '.' . ($sameName
+				? " Drop them later with `winux postgres:delete {$database['database']} --pg={$database['version']}`."
+				: ''));
+			$database['database'] = $database['username'] = null;
 		}
 
 		$deleteFiles = false;
