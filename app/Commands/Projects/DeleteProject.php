@@ -102,7 +102,12 @@ class DeleteProject extends Command
 		if ($databaseItems) {
 			$deleteDatabase = $this->option('delete-database');
 			if (!$deleteDatabase && $this->input->isInteractive()) {
-				$deleteDatabase = confirm('Drop ' . implode(' and ', $databaseItems) . '? Its data is gone for good.', false);
+				// Prompts truncates long labels, so the details (and the warning) go in the hint
+				$deleteDatabase = confirm(
+					'Also drop the database?',
+					false,
+					hint: 'Drops ' . implode(' and ', $databaseItems) . '. Its data is gone for good.',
+				);
 			}
 		}
 

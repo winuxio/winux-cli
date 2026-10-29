@@ -16,7 +16,6 @@ use function Laravel\Prompts\alert;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\info;
-use function Laravel\Prompts\multiselect;
 use function Laravel\Prompts\note;
 use function Laravel\Prompts\warning;
 
@@ -470,6 +469,10 @@ class Project
 		return $contents;
 	}
 
+	/**
+	 * Runs `git init` and makes the initial commit. Without a git identity (user.name and user.email)
+	 * the repository is still created, but nothing is committed.
+	 */
 	public function initializeGitRepository(): bool
 	{
 		if (Process::path($this->path)->run(['git', 'init', '-b', 'main'])->failed()) {
@@ -482,8 +485,29 @@ class Project
 		return $this->gitCommit('Initial commit');
 	}
 
+	/**
+	 * Whether git knows who to commit as (user.name and user.email, from any config level).
+	 */
+	public function hasGitIdentity(): bool
+	{
+		foreach (['user.name', 'user.email'] as $key) {
+			$process = Process::path($this->path)->run(['git', 'config', '--get', $key]);
+			if ($process->failed() || trim($process->output()) === '') {
+				return false;
+			}
+		}
+
+		return true;
+	}
+
 	public function gitCommit(string $message): bool
 	{
+		if (!$this->hasGitIdentity()) {
+			warning("Skipped the git commit ('$message'): git doesn't know who you are yet.");
+			note('Set your identity with `git config --global user.name "Your Name"` and `git config --global user.email you@example.com`, then commit yourself.');
+			return false;
+		}
+
 		if (Process::path($this->path)->run(['git', 'add', '.'])->failed()) {
 			error('Failed to add the files to the git repository.');
 			return false;
@@ -500,24 +524,82 @@ class Project
 		return true;
 	}
 
-	public function installAdditionalPackages(bool $commit = true): void
+	/**
+	 * Installs the given extra packages (committing each one when the project has a repository).
+	 *
+	 * @param Packages[] $packages
+	 */
+	public function installAdditionalPackages(array $packages, bool $commit = true): bool
 	{
-		$packages = collect(Packages::cases())
-			->mapWithKeys(fn ($package) => [$package->value => $package->label()]);
+		$success = true;
 
-		$extraPackages = multiselect(
-			'Install any additional packages? (More coming!)',
-			$packages,
-			hint: 'Press space to select, enter to continue',
-		);
+		foreach ($packages as $package) {
+			info("Installing {$package->label()}...");
+			if (!$package->install($this->path, $this->phpBinary())) {
+				$success = false;
+				continue;
+			}
 
-		collect($extraPackages)->each(function ($packageValue) use ($commit) {
-			$package = Packages::from($packageValue);
-			$package->install($this->path, $this->phpBinary());
 			if ($commit && $this->hasRepo) {
 				$this->gitCommit("Installed {$package->label()}");
 			}
-		});
+		}
+
+		return $success;
+	}
+
+	/**
+	 * `composer install` with the site's PHP version, for a checkout without vendor/.
+	 */
+	public function installDependencies(): bool
+	{
+		if (is_file($this->path . '/vendor/autoload.php') || !is_file($this->path . '/composer.json')) {
+			return true;
+		}
+
+		if (!($composer = static::composerPath())) {
+			error('vendor/ is missing and Composer was not found on your PATH. See https://getcomposer.org/download/');
+			return false;
+		}
+
+		info("Installing Composer dependencies with PHP {$this->phpVersion}...");
+		$process = Process::path($this->path)->forever()->run(
+			[$this->phpBinary(), $composer, 'install', '--no-interaction'],
+			function ($type, $buffer) {
+				echo $buffer;
+			}
+		);
+
+		if ($process->failed()) {
+			error("`composer install` failed. Fix the problem above, then run `{$this->phpBinary()} $composer install` in {$this->path}.");
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Generates APP_KEY when .env leaves it empty (e.g. right after copying .env.example).
+	 */
+	public function ensureAppKey(): bool
+	{
+		if (($this->envValue('APP_KEY') ?? '') !== '' || !is_file($this->path . '/artisan')) {
+			return true;
+		}
+
+		$process = Process::path($this->path)->run([$this->phpBinary(), 'artisan', 'key:generate', '--force', '--no-interaction']);
+		if ($process->failed()) {
+			error('Failed to generate APP_KEY: ' . trim($process->errorOutput() ?: $process->output()));
+			return false;
+		}
+
+		info('Generated APP_KEY.');
+		return true;
+	}
+
+	public static function composerPath(): ?string
+	{
+		return trim(Process::run(['sh', '-c', 'command -v composer'])->output()) ?: null;
 	}
 
 	public function createGitHubRepo(GitHubVisibility $visibility = GitHubVisibility::Private): bool
@@ -645,7 +727,12 @@ class Project
 	#region Openers
 	public function openEditor(Editors $editor = Editors::VSCODE): bool
 	{
-		$process = Process::run([$editor->getCommand(), $this->path]);
+		$path = $this->path;
+		if ($editor->needsWindowsPath() && Platform::isWsl()) {
+			$path = trim(Process::run(['wslpath', '-w', $this->path])->output()) ?: $this->path;
+		}
+
+		$process = Process::run([$editor->getCommand(), $path]);
 		if ($process->failed()) {
 			error("Failed to open the project in {$editor->getLabel()}.");
 			return false;
@@ -680,14 +767,14 @@ class Project
 	 */
 	public function phpBinary(): string
 	{
-		$versioned = "/usr/bin/php{$this->phpVersion}";
+		$versioned = config('winux.php.bin', '/usr/bin') . "/php{$this->phpVersion}";
 		return is_executable($versioned) ? $versioned : 'php';
 	}
 
 	private function installLaravel(): bool
 	{
-		$composer = trim(Process::run(['sh', '-c', 'command -v composer'])->output());
-		if ($composer === '') {
+		$composer = static::composerPath();
+		if ($composer === null) {
 			error('Composer was not found on your PATH. See https://getcomposer.org/download/');
 			return false;
 		}

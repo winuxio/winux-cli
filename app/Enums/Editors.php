@@ -22,4 +22,16 @@ enum Editors: string
 			self::PHPSTORM => 'PhpStorm',
 		};
 	}
+
+	/**
+	 * Windows programs need the project as a Windows path (\\wsl.localhost\...). VS Code's `code`
+	 * launcher understands WSL itself and opens the folder through its WSL extension.
+	 */
+	public function needsWindowsPath(): bool
+	{
+		return match ($this) {
+			self::VSCODE => false,
+			self::PHPSTORM => true,
+		};
+	}
 }
