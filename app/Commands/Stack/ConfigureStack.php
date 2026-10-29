@@ -23,7 +23,7 @@ class ConfigureStack extends Command
 
 		// Only worth mentioning when services used to run as someone else (e.g. www-data)
 		if ($changed) {
-			note('Projects whose storage/ already has files written by www-data need them handed back once: run `sudo chown -R $USER storage bootstrap/cache` in the project.');
+			note('Projects may already have files written by www-data (in storage/, uploads, ...). Hand them back once with `winux site:permissions --all`.');
 		}
 
 		return self::SUCCESS;

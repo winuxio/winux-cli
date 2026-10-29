@@ -52,11 +52,15 @@ On a machine set up by an older winux, `winux doctor` shows "nginx/PHP-FPM run a
 winux service:configure
 ```
 
-It's safe to run again at any time. If a project's `storage/` or `bootstrap/cache` already contains files written by `www-data`, hand them back once from the project directory:
+It's safe to run again at any time. Projects may already contain files written by `www-data` (logs and cache in `storage/`, uploads, ...). Hand them back once:
 
 ```bash
-sudo chown -R $USER storage bootstrap/cache
+winux site:permissions                # the project in the current directory (or --site=<name>)
+winux site:permissions --all          # every site
+winux site:permissions --dry-run      # just list the files that aren't yours
 ```
+
+It changes the owner of every file in the project that isn't yours to you (symlinks themselves, never what they point to), and makes `storage/` and `bootstrap/cache` writable. Use it any time a site fails with "Permission denied" in `storage/logs`.
 
 ## Updating
 
@@ -150,6 +154,7 @@ winux site:domain:remove my-app.test
 
 winux site:secure --site=my-app                   # reissue a site's certificate
 winux site:secure --all                           # reissue every site's certificate
+winux site:permissions                            # hand files (e.g. written by www-data) back to you
 ```
 
 The `nginx:enable`, `nginx:disable` and `nginx:delete` commands take `--site=<name>` too (or the name as an argument, as before).

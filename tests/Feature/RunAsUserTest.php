@@ -110,7 +110,7 @@ it('normalizes nginx and every php-fpm pool with service:configure', function ()
 	expect(ServiceUser::misconfigured())->toBe(['nginx (www-data)', 'PHP 8.4 (www-data)']);
 
 	expect(Artisan::call('service:configure'))->toBe(0)
-		->and(Artisan::output())->toContain('nginx and PHP-FPM run as dev')->toContain('sudo chown -R $USER storage bootstrap/cache');
+		->and(Artisan::output())->toContain('nginx and PHP-FPM run as dev')->toContain('winux site:permissions --all');
 
 	expect(File::get("{$this->root}/nginx.conf"))->toStartWith("user dev devs;\n")
 		->and(File::get("{$this->root}/etc/php/8.4/fpm/pool.d/www.conf"))->toContain("user = dev\ngroup = devs")
@@ -125,7 +125,7 @@ it('normalizes nginx and every php-fpm pool with service:configure', function ()
 
 	// Running it again changes nothing
 	expect(Artisan::call('service:configure'))->toBe(0)
-		->and(Artisan::output())->not->toContain('sudo chown');
+		->and(Artisan::output())->not->toContain('site:permissions');
 });
 
 it('restores nginx.conf when nginx rejects the new user', function () {
