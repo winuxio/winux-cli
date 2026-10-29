@@ -95,6 +95,7 @@ winux project:create my-app                       # new Laravel app, served at h
 winux project:create my-app --php=8.3 --pg=16     # pick versions per project
 winux project:create my-app --domain=my-app.test  # also answer to extra domains
 winux project:import my-app                       # wire up an existing checkout in ./my-app
+winux project:import                              # ...or the project you're in (same as `.`); paths like ../my-app work too
 winux project:delete my-app                       # remove its site and certificate (asks about the database and files)
 winux project:delete my-app --force --delete-database --delete-files  # no prompts, everything
 ```

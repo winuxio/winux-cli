@@ -76,11 +76,11 @@ class Project
 	}
 
 	/**
-	 * Why a project can't be set up in the current directory (bad name or a path nginx can't serve), or null.
+	 * Why a project can't be set up in $directory (default: the current one): a bad name or a path nginx can't serve, or null.
 	 */
-	public static function validationError(string $name): ?string
+	public static function validationError(string $name, ?string $directory = null): ?string
 	{
-		return static::nameError($name) ?? Site::unsafePathReason(getcwd() . DIRECTORY_SEPARATOR . $name);
+		return static::nameError($name) ?? Site::unsafePathReason(($directory ?? getcwd()) . DIRECTORY_SEPARATOR . $name);
 	}
 
 	/**
@@ -92,9 +92,9 @@ class Project
 	}
 
 	/**
-	 * Create a new project instance for the given directory in the current directory
+	 * Create a new project instance for the directory $name in $directory (default: the current one)
 	 */
-	public static function create(string $name, ?string $phpVersion = null, ?string $postgresVersion = null): Project
+	public static function create(string $name, ?string $phpVersion = null, ?string $postgresVersion = null, ?string $directory = null): Project
 	{
 		if ($reason = static::nameError($name)) {
 			throw new \InvalidArgumentException($reason);
@@ -103,7 +103,7 @@ class Project
 		$project = new Project();
 		$project->name = $name;
 		$project->slug = static::slug($name);
-		$project->path = getcwd() . DIRECTORY_SEPARATOR . $name;
+		$project->path = ($directory ?? getcwd()) . DIRECTORY_SEPARATOR . $name;
 		$project->phpVersion = $phpVersion ?? PhpFpm::defaultVersion();
 		$project->postgresVersion = $postgresVersion ?? $project->detectPostgresVersion() ?? Postgres::defaultVersion();
 
