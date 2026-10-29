@@ -159,8 +159,13 @@ sudo install -m 0755 "$tmp_dir/winux" "$WINUX_BIN"
 # Earlier versions installed to /usr/sbin
 if [ -f /usr/sbin/winux ] && [ "$WINUX_BIN" != /usr/sbin/winux ]; then
 	answer=""
-	# stdin is this script under `curl | bash`, so ask on the terminal (if there is one)
-	{ read -r -p "Remove the older winux at /usr/sbin/winux? [Y/n] " answer </dev/tty; } 2>/dev/null || answer="skip"
+	# stdin is this script under `curl | bash`, so ask on the terminal (if there is one).
+	# Only silence the check: read prints its prompt to stderr, so hiding read's stderr hides the question
+	if { : </dev/tty; } 2>/dev/null; then
+		read -r -p "Remove the older winux at /usr/sbin/winux? [Y/n] " answer </dev/tty || answer="skip"
+	else
+		answer="skip"
+	fi
 	case "$answer" in
 		""|[Yy]*) sudo rm -f /usr/sbin/winux && info "Removed /usr/sbin/winux" ;;
 		*) warn "An older winux remains at /usr/sbin/winux. Remove it with: sudo rm /usr/sbin/winux" ;;
