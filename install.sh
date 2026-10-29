@@ -6,7 +6,7 @@
 #
 # Environment overrides:
 #   WINUX_PHP=8.4          PHP version for the winux CLI itself (and the default for new sites)
-#   WINUX_VERSION=latest   Release tag to install, e.g. v1.0.0
+#   WINUX_VERSION=latest   Release tag to install, e.g. v0.2.0
 #   WINUX_BIN=/usr/local/bin/winux
 #
 set -euo pipefail
