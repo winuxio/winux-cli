@@ -201,3 +201,11 @@ it('reports which services the doctor should fix', function () {
 
 	expect(Artisan::output())->toContain('nginx/PHP-FPM run as dev')->toContain('Run `winux service:configure`.');
 });
+
+it('shows the doctor marks without leaking color tags', function () {
+	fakeServiceProcesses($this->root);
+
+	Artisan::call('doctor');
+
+	expect(Artisan::output())->toContain('✓')->toContain('✗')->not->toContain('<fg=');
+});
