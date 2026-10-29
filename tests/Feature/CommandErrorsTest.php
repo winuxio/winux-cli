@@ -107,10 +107,10 @@ it('controls postgres clusters with pg_ctlcluster when systemd is not running', 
 	expect(Postgres::make('16')->controlCommand('restart'))->toBe(['sudo', 'pg_ctlcluster', '16', 'main', 'restart']);
 
 	expect(Postgres::make('16')->restart())->toBeTrue()
-		->and(Postgres::make('16')->isActive())->toBeTrue();
+		->and(Postgres::make('16')->isActive())->toBeTrue()
+		->and(Postgres::make('15')->isActive())->toBeFalse();
 
 	Process::assertRan(fn ($process) => $process->command === ['sudo', 'pg_ctlcluster', '16', 'main', 'restart']);
-	Process::assertRan(fn ($process) => $process->command === ['pg_ctlcluster', '16', 'main', 'status']);
 	Process::assertNotRan(fn ($process) => in_array('service', (array) $process->command, true));
 });
 

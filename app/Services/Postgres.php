@@ -101,8 +101,9 @@ class Postgres extends Service
 			return parent::isActive();
 		}
 
-		// pg_ctlcluster status exits 0 when the cluster is running, 3 when it's stopped
-		return Process::run(['pg_ctlcluster', $this->version, 'main', 'status'])->successful();
+		// `pg_ctlcluster status` needs root or the postgres user; pg_lsclusters doesn't
+		static::$clusters = null;
+		return (static::clusters()[$this->version]['status'] ?? null) === 'online';
 	}
 
 	/**
