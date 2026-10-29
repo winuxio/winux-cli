@@ -54,7 +54,7 @@ function superuserStatements(): array
 	$statements = [];
 	Process::assertRan(function ($process) use (&$statements) {
 		$command = (array) $process->command;
-		if (in_array('psql', $command, true) && in_array('postgres', $command, true) && !in_array('-tA', $command, true)) {
+		if (in_array('psql', $command, true) && in_array('postgres', $command, true) && !in_array('-tA', $command, true) && !in_array('-tAc', $command, true)) {
 			$statements[] = (string) $process->input;
 		}
 		return true;

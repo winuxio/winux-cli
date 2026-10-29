@@ -38,7 +38,21 @@ winux setup
 
 If Windows can't be reached (or you decline its prompt), setup still finishes and tells you how to trust the CA in Windows later. Use `winux setup --skip-windows` to only trust it inside Linux/WSL. `--php=8.4 --php=8.3` and `--pg=16` skip the questions.
 
-Run `winux doctor` at any time to check that everything is healthy.
+Run `winux doctor` at any time to check that everything is healthy, and `winux doctor --fix` to have winux fix what it can itself: start stopped services, run them as you, create your Postgres role, install the passwordless rules below, and set up the root CA.
+
+### No password prompts for projects
+
+Creating, importing and deleting projects doesn't ask for your password:
+
+- **Postgres:** setup creates a superuser role named after your Linux user, and winux connects as it over the local socket. Ubuntu's and Debian's Postgres let a Linux user in as the matching role without a password, the same way Homebrew's Postgres works on a Mac. That's the same access `sudo -u postgres` gives you, minus the password. A cluster without the role falls back to `sudo -u postgres`.
+- **nginx and PHP-FPM:** `/etc/sudoers.d/winux` lets you run the exact commands winux uses to check and reload them without a password (`nginx -t`, `systemctl reload|restart|start nginx`, and the same for each `php<version>-fpm`). The arguments are fixed, so the rule can't run anything else, and `visudo` checks the file before it's installed. Setup asks first. Installing another PHP version adds its commands.
+
+```bash
+winux sudoers            # install (or refresh) the rules
+winux sudoers --remove   # remove them; winux asks for your password again, and doctor stops suggesting them
+```
+
+Setting up a new machine, installing packages, and editing `/etc/hosts` for custom domains still ask for your password.
 
 ### nginx and PHP-FPM run as you
 
@@ -84,6 +98,12 @@ Every download, by `self-update` and by `install.sh`, is checked against the rel
 
 ```bash
 gh attestation verify "$(command -v winux)" --repo winuxio/winux-cli
+```
+
+When an update changes how winux sets up your machine (like 0.3.4's passwordless projects), `self-update` shows what changed and offers to apply it right away. If you skip it, or updated from a version older than 0.3.4, every command reminds you until you run:
+
+```bash
+winux doctor --fix
 ```
 
 To turn off the daily check, run with `WINUX_NO_UPDATE_CHECK=1` or set `"update": {"check": false}` in `~/.winux/config.json`. It's also skipped in CI and when output isn't a terminal.
@@ -209,6 +229,7 @@ winux service:status
 winux service:install [nginx|php|postgres|redis|mysql] [version]
 winux service:start|stop|restart [service] [version]
 winux service:configure           # run nginx and all PHP-FPM versions as you (see above)
+winux sudoers [--remove]          # check and reload nginx/PHP-FPM without a password (see above)
 winux nginx:restart | php:restart [version] | postgres:restart [version] | redis:restart
 ```
 

@@ -11,6 +11,8 @@ return [
 			'available' => 'sites/available',
 			'enabled' => 'sites/enabled',
 		],
+		// Rules that let winux check and reload nginx/PHP-FPM without a password (`winux sudoers`)
+		'sudoers' => '/etc/sudoers.d/winux',
 	],
 
 	'nginx' => [
