@@ -282,7 +282,7 @@ it('asks before dropping the database', function (bool $answer) {
 	$this->artisan('project:delete', ['projectName' => 'shop'])
 		->expectsConfirmation('Are you sure?', 'yes')
 		->expectsQuestion("If you're absolutely sure, type 'shop' below.", 'shop')
-		->expectsConfirmation('Also drop the database?', $answer ? 'yes' : 'no')
+		->expectsConfirmation('Also drop the database? Its data is gone for good.', $answer ? 'yes' : 'no')
 		->expectsConfirmation("Do you want to delete the project directory at '{$this->root}/work/shop'?", 'no')
 		->assertSuccessful();
 
