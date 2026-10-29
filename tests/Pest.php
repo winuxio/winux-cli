@@ -15,6 +15,10 @@ function winuxSandbox(array $phpVersions = ['8.3', '8.4']): string
 
 	File::ensureDirectoryExists("$base/sites/available");
 	File::ensureDirectoryExists("$base/sites/enabled");
+	// A set-up machine already has its mkcert CA (faked mkcert processes can't create one)
+	File::ensureDirectoryExists("$base/ssl/root");
+	File::put("$base/ssl/root/rootCA.pem", 'fake ca');
+	File::put("$base/ssl/root/rootCA-key.pem", 'fake key');
 	foreach ($phpVersions as $version) {
 		File::ensureDirectoryExists("$root/etc/php/$version/fpm");
 		File::put("$root/etc/php/$version/fpm/php-fpm.conf", '');
@@ -24,6 +28,9 @@ function winuxSandbox(array $phpVersions = ['8.3', '8.4']): string
 		'winux.paths.home' => $root,
 		'winux.paths.base' => $base,
 		'winux.php.root' => "$root/etc/php",
+		'winux.php.bin' => "$root/usr/bin",
+		'winux.nginx.pid' => "$root/run/nginx.pid",
+		'winux.nginx.default_root' => "$root/var/www/html",
 	]);
 
 	test()->sandboxRoot = $root;

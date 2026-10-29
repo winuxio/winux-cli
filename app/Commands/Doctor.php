@@ -6,6 +6,7 @@ use App\Classes\AptRepository;
 use App\Classes\Mkcert;
 use App\Classes\Platform;
 use App\Classes\Releases;
+use App\Classes\ServiceUser;
 use App\Classes\Site;
 use App\Classes\UpdateCheck;
 use App\Services\Nginx;
@@ -54,6 +55,12 @@ class Doctor extends Command
 			$this->check("  PHP $version FPM", $fpm->isActive(), $this->state($fpm), "Run `winux service:start php $version`.");
 		}
 
+		if ($nginx->isInstalled() || $phpVersions) {
+			$user = ServiceUser::current()['name'] ?? 'you';
+			$wrong = ServiceUser::misconfigured();
+			$this->check("nginx/PHP-FPM run as $user", empty($wrong), $wrong ? 'not yet: ' . implode(', ', $wrong) : '', 'Run `winux service:configure`.');
+		}
+
 		$missingPhp = collect(Site::all())
 			->filter(fn (Site $site) => $site->isEnabled() && $site->phpVersion() && !in_array($site->phpVersion(), $phpVersions, true))
 			->map(fn (Site $site) => "{$site->domain} ({$site->phpVersion()})");
@@ -72,7 +79,7 @@ class Doctor extends Command
 		$this->check('mkcert', Mkcert::isInstalled(), '', 'Run `winux ssl:root:install`.');
 		$this->check('Root CA', Mkcert::hasRootCA(), Mkcert::hasRootCA() ? Mkcert::rootCert() : 'missing', 'Run `winux ssl:root:install`.');
 		if (Platform::isWsl() && Mkcert::hasRootCA()) {
-			$this->check('Root CA trusted by Windows', Mkcert::isTrustedByWindows(), '', 'Run `winux ssl:root:install`.');
+			$this->check('Root CA trusted by Windows', Mkcert::isTrustedByWindows(), '', 'Run `winux ssl:root:install` and accept the Windows prompt.');
 		}
 
 		table(
