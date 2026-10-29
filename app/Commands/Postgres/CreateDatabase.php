@@ -18,6 +18,11 @@ class CreateDatabase extends Command
 
 	public function handle(): int
 	{
+		if ($reason = Postgres::versionError($this->option('pg'))) {
+			error($reason);
+			return self::FAILURE;
+		}
+
 		$dbName = Project::databaseName($this->argument('database'));
 		$password = Postgres::generatePassword();
 		$postgres = Postgres::make($this->option('pg'));

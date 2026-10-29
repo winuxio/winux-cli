@@ -127,23 +127,78 @@ class Hosts
 			return true;
 		}
 
-		// The hosts file needs admin rights: run an elevated PowerShell (Windows shows a UAC prompt)
-		$payload = base64_encode($updated);
-		$inner = '$p = Join-Path $env:SystemRoot "System32\drivers\etc\hosts"; '
-			. "[IO.File]::WriteAllText(\$p, [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('$payload')))";
-		$encoded = base64_encode(mb_convert_encoding($inner, 'UTF-16LE', 'UTF-8'));
-		$outer = "Start-Process powershell.exe -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand','$encoded'";
-
-		note('Windows will ask for permission to update its hosts file.');
-		Process::timeout(300)->run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', $outer]);
-
-		clearstatcache();
-		if (@file_get_contents($path) !== $updated) {
-			error('The Windows hosts file was not updated (was the UAC prompt declined?).');
+		// The new contents go in a file under the Windows %TEMP%, which the elevated PowerShell copies
+		// into place. (Passing them inline breaks Windows' 32K command line limit for larger hosts files.)
+		$staged = static::stageForWindows($updated);
+		if ($staged === null) {
 			return false;
 		}
+		[$linuxTemp, $windowsTemp] = $staged;
 
-		info('Updated the Windows hosts file.');
-		return true;
+		note('Windows will ask for permission to update its hosts file.');
+		$process = Process::timeout(300)->run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', static::windowsCopyCommand($windowsTemp)]);
+
+		$copyError = trim((string) @file_get_contents("$linuxTemp.err"));
+		@unlink($linuxTemp);
+		@unlink("$linuxTemp.err");
+
+		clearstatcache();
+		if (@file_get_contents($path) === $updated) {
+			info('Updated the Windows hosts file.');
+			return true;
+		}
+
+		if ($process->exitCode() === static::UAC_DECLINED) {
+			error("The Windows hosts file was not updated: PowerShell couldn't elevate (was the UAC prompt declined?). " . trim($process->errorOutput()));
+		} else {
+			error('Failed to update the Windows hosts file: ' . ($copyError ?: trim($process->errorOutput()) ?: 'it still has its old contents.'));
+		}
+
+		return false;
+	}
+
+	/** Exit code the copy command uses when Windows' UAC prompt is declined (ERROR_CANCELLED) */
+	public const UAC_DECLINED = 1223;
+
+	/**
+	 * Writes the contents to a new file in the Windows %TEMP% directory.
+	 *
+	 * @return array{0: string, 1: string}|null [Linux path, Windows path]
+	 */
+	protected static function stageForWindows(string $contents): ?array
+	{
+		$windowsDir = trim(Process::run(['cmd.exe', '/d', '/c', 'echo %TEMP%'])->output());
+		$linuxDir = $windowsDir !== '' ? trim(Process::run(['wslpath', '-u', $windowsDir])->output()) : '';
+
+		if ($linuxDir === '' || !is_dir($linuxDir)) {
+			error("Couldn't find the Windows temp directory to stage the new hosts file in.");
+			return null;
+		}
+
+		$name = 'winux-hosts-' . bin2hex(random_bytes(6));
+		if (@file_put_contents("$linuxDir/$name", $contents) === false) {
+			error("Couldn't write the new hosts file to $linuxDir.");
+			return null;
+		}
+
+		return ["$linuxDir/$name", rtrim($windowsDir, '\\') . '\\' . $name];
+	}
+
+	/**
+	 * A PowerShell command that copies the staged file over the hosts file in an elevated PowerShell
+	 * (Windows shows a UAC prompt). It exits with UAC_DECLINED if the prompt is declined, and writes
+	 * any copy error to "<staged file>.err".
+	 */
+	public static function windowsCopyCommand(string $windowsSource): string
+	{
+		$source = "'" . str_replace("'", "''", $windowsSource) . "'";
+		$errorFile = "'" . str_replace("'", "''", $windowsSource . '.err') . "'";
+
+		$inner = 'try { Copy-Item -LiteralPath ' . $source . ' -Destination (Join-Path $env:SystemRoot "System32\drivers\etc\hosts") -Force -ErrorAction Stop; exit 0 } '
+			. 'catch { Set-Content -LiteralPath ' . $errorFile . ' -Value $_.Exception.Message; exit 1 }';
+		$encoded = base64_encode(mb_convert_encoding($inner, 'UTF-16LE', 'UTF-8'));
+
+		return "try { \$p = Start-Process powershell.exe -Verb RunAs -Wait -PassThru -WindowStyle Hidden -ArgumentList '-NoProfile','-EncodedCommand','$encoded'; exit \$p.ExitCode } "
+			. 'catch { [Console]::Error.WriteLine($_.Exception.Message); exit ' . static::UAC_DECLINED . ' }';
 	}
 }

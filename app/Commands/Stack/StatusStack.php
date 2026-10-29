@@ -5,7 +5,7 @@ namespace App\Commands\Stack;
 use App\Enums\ServiceType;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\table;
+use function Laravel\Prompts\{error, table};
 
 class StatusStack extends Command
 {
@@ -15,7 +15,13 @@ class StatusStack extends Command
 
 	public function handle(): int
 	{
-		$rows = collect(ServiceType::resolve($this->argument('service')))
+		$service = $this->argument('service');
+		if ($service !== null && !ServiceType::tryFrom($service)) {
+			error("Unknown service '$service'. Choose from: " . implode(', ', ServiceType::values()));
+			return self::FAILURE;
+		}
+
+		$rows = collect(ServiceType::resolve($service))
 			->map(function ($service) {
 				$installed = $service->isInstalled();
 				return [

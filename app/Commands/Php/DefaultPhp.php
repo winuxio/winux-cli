@@ -27,14 +27,17 @@ class DefaultPhp extends Command
 			return self::FAILURE;
 		}
 
+		// Checked before anything is saved, so a refused --cli doesn't leave the default half-changed
+		$cliAllowed = version_compare($version, '8.3', '>=');
+		if ($this->option('cli') && !$cliAllowed) {
+			error("winux itself needs PHP 8.3+, so the `php` CLI can't be switched to $version. Nothing was changed.");
+			return self::FAILURE;
+		}
+
 		Settings::set('php.default', $version);
 		info("New sites will use PHP $version.");
 
-		$cli = $this->option('cli') || ($this->input->isInteractive() && confirm("Also switch the `php` CLI to $version?", false));
-		if ($cli && version_compare($version, '8.3', '<')) {
-			error("winux itself needs PHP 8.3+, so the `php` CLI can't be switched to $version.");
-			return self::FAILURE;
-		}
+		$cli = $this->option('cli') || ($cliAllowed && $this->input->isInteractive() && confirm("Also switch the `php` CLI to $version?", false));
 
 		if ($cli) {
 			$process = Process::run(['sudo', 'update-alternatives', '--set', 'php', "/usr/bin/php$version"]);

@@ -8,26 +8,32 @@ use App\Commands\Concerns\ResolvesSite;
 use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\info;
+use function Laravel\Prompts\{error, info};
 
 class SecureSite extends Command
 {
 	use ResolvesSite;
 
 	protected $signature = 'site:secure
-		{site? : Site name or domain (defaults to the project in the current directory)}
+		{name? : Same as --site}
+		{--site= : Site name or domain (defaults to the project in the current directory)}
 		{--all : Reissue certificates for every site}';
 
 	protected $description = "Reissue a site's certificate (covering all of its domains) with mkcert";
 
 	public function handle(): int
 	{
-		$sites = $this->option('all')
-			? Site::all()
-			: array_filter([$this->resolveSite($this->argument('site'))]);
-
-		if (empty($sites)) {
-			return self::FAILURE;
+		if ($this->option('all')) {
+			$sites = Site::all();
+			if (empty($sites)) {
+				error('No sites exist yet, so there are no certificates to reissue.');
+				return self::FAILURE;
+			}
+		} else {
+			$sites = array_filter([$this->resolveSite($this->option('site') ?? $this->argument('name'))]);
+			if (empty($sites)) {
+				return self::FAILURE;
+			}
 		}
 
 		$failed = false;

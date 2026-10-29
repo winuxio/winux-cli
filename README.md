@@ -33,10 +33,30 @@ winux setup
 `winux setup` then asks which PHP versions and which Postgres version you want, and installs:
 
 - the [PGDG](https://www.postgresql.org/download/linux/ubuntu/) Postgres repository and your chosen Postgres version (match production)
-- nginx, Redis, and the chosen PHP-FPM versions with common extensions
+- nginx, Redis, and the chosen PHP-FPM versions with common extensions, set up to [run as you](#nginx-and-php-fpm-run-as-you)
 - [mkcert](https://github.com/FiloSottile/mkcert), with its root CA trusted by Linux and by Windows (Chrome/Edge/Firefox on Windows)
 
+If Windows can't be reached (or you decline its prompt), setup still finishes and tells you how to trust the CA in Windows later. Use `winux setup --skip-windows` to only trust it inside Linux/WSL. `--php=8.4 --php=8.3` and `--pg=16` skip the questions.
+
 Run `winux doctor` at any time to check that everything is healthy.
+
+### nginx and PHP-FPM run as you
+
+Like [Valet](https://laravel.com/docs/valet), winux runs nginx and PHP-FPM as your user instead of `www-data`. Ubuntu 24.04 creates home directories that other users can't enter (`0750`), so a `www-data` nginx can't read a project in your home (404) and a `www-data` PHP can't write to `storage/` (500). Running as you means no `chmod`/`chown` on your projects, and files the app writes (logs, cache, uploads) belong to you.
+
+winux sets the `user` directive in `/etc/nginx/nginx.conf` and `user`, `group`, `listen.owner` and `listen.group` in each PHP version's `/etc/php/<version>/fpm/pool.d/www.conf` (nothing else in those files changes). Each file is backed up to `~/.winux/backups/` first, checked with `nginx -t` / `php-fpm<version> -t`, and restored if the check fails. This happens during `winux setup`, `winux php:install` (and `service:install php`), and `winux service:install nginx`.
+
+On a machine set up by an older winux, `winux doctor` shows "nginx/PHP-FPM run as &lt;you&gt;" failing. Fix it (for nginx and every installed PHP version at once) with:
+
+```bash
+winux service:configure
+```
+
+It's safe to run again at any time. If a project's `storage/` or `bootstrap/cache` already contains files written by `www-data`, hand them back once from the project directory:
+
+```bash
+sudo chown -R $USER storage bootstrap/cache
+```
 
 ## Updating
 
@@ -82,7 +102,21 @@ Creating or importing a project:
 - generates an nginx site and a certificate, checks the result with `nginx -t`, and removes the new site again if nginx rejects it
 - creates a Postgres database and user
 - updates `.env`
-- optionally runs migrations, creates a GitHub repo, installs Filament, and opens your editor and browser
+- offers to run migrations, and to open your editor and browser
+
+`project:create` also offers to create a git repository (and a GitHub repository with [`gh`](https://cli.github.com/)) and to install Filament. Every question has an option, so it can run unattended:
+
+```bash
+winux project:create my-app --git                  # git init + initial commit
+winux project:create my-app --github=private       # ...and a private GitHub repo (implies --git; or public)
+winux project:create my-app --filament             # install Filament (same as --package=filament)
+winux project:create my-app --migrate              # run migrations without asking
+winux project:create my-app -n                     # no questions: migrations run; no git, GitHub, packages, editor or browser
+```
+
+If git doesn't know your name and email yet (`git config --global user.name` / `user.email`), the repository is created without a commit, and GitHub is skipped, with a note on how to set them.
+
+`project:import` doesn't create repositories or install packages. For a fresh checkout it runs `composer install` (with the site's PHP version) when `vendor/` is missing, and `php artisan key:generate` when `APP_KEY` is empty; if either fails, it stops and says so rather than reporting the site as live. With `--no-interaction` it doesn't run migrations unless you pass `--migrate`, since an imported database may hold data.
 
 When a project's database or user already exists, `project:create` and `project:import` check whether another winux project's `.env` uses it:
 
@@ -114,8 +148,13 @@ winux site:domain:add api.my-app.local.winux.io   # extra names; the certificate
 winux site:domain:add my-app.test                 # non-winux.io names get hosts entries (Windows + WSL)
 winux site:domain:remove my-app.test
 
+winux site:secure --site=my-app                   # reissue a site's certificate
 winux site:secure --all                           # reissue every site's certificate
 ```
+
+The `nginx:enable`, `nginx:disable` and `nginx:delete` commands take `--site=<name>` too (or the name as an argument, as before).
+
+Before `site:php` switches versions, it runs the project's `vendor/composer/platform_check.php` with the new PHP version. If the locked dependencies need a different PHP (a project created on 8.4 typically needs 8.4 or newer), every request would fail with "Composer detected issues in your platform", so it shows the problem and asks first (the default is no). Pass `--force` to switch anyway, then run `composer update` with the new version.
 
 ## PHP & Postgres versions
 
@@ -136,18 +175,22 @@ winux service:install postgres 17 # add another version alongside
 winux service:status
 winux service:install [nginx|php|postgres|redis|mysql] [version]
 winux service:start|stop|restart [service] [version]
+winux service:configure           # run nginx and all PHP-FPM versions as you (see above)
 winux nginx:restart | php:restart [version] | postgres:restart [version] | redis:restart
 ```
 
-Services are managed with `systemctl`. If systemd isn't running, winux falls back to `service`.
+Services are managed with `systemctl`. If systemd isn't running, winux falls back to `service` (and to `pg_ctlcluster` for Postgres clusters), and starts services right after installing them, since nothing starts them at boot.
 
 ## SSL
 
 Certificates are issued by mkcert using the CA in `~/.winux/ssl/root`. If you used an older version of winux, its existing `winux_root` CA is adopted automatically, so browsers that already trust it keep working.
 
 ```bash
-winux ssl:root:install            # (re)trust the root CA in Linux and Windows
+winux ssl:root:install                  # (re)trust the root CA in Linux and Windows
+winux ssl:root:install --skip-windows   # only inside Linux/WSL
 ```
+
+If trusting the CA in Windows fails (Windows isn't reachable, or its prompt is declined), you get a warning and the next step instead of an error: sites still work inside WSL, and only browsers on Windows warn until you run `winux ssl:root:install` again. winux only talks to Windows inside a real WSL distro (one with Windows interop), not in, say, a Docker container on a WSL kernel.
 
 ## Files
 
@@ -168,6 +211,7 @@ winux ssl:root:install            # (re)trust the root CA in Linux and Windows
 ## Upgrading from 0.1
 
 - Your sites, certificates, and root CA are all kept. Run `winux doctor` to check everything.
+- nginx and PHP-FPM now run as you rather than `www-data`. Run `winux service:configure` once (see [above](#nginx-and-php-fpm-run-as-you)).
 - 0.1 can't update itself: install the latest release once with `install.sh` (above), then use `winux self-update` from then on.
 - Older versions installed to `/usr/sbin/winux`. Remove that copy with `sudo rm /usr/sbin/winux`.
 - The default site template now redirects HTTP to `https://$host`, so extra domains redirect to themselves. Older sites are updated the first time you add a domain to them.

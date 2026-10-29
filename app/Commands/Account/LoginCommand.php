@@ -5,21 +5,20 @@ namespace App\Commands\Account;
 use App\Classes\Utility;
 use App\Http\Integrations\Winux\Requests\ClientRegistrationRequest;
 use App\Http\Integrations\Winux\WinuxAuthConnector;
-use Illuminate\Support\Facades\App;
-use Illuminate\Support\Str;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\alert;
 use function Laravel\Prompts\confirm;
 use function Laravel\Prompts\error;
 use function Laravel\Prompts\note;
-use function Laravel\Prompts\spin;
 use function Laravel\Prompts\info;
 
+/**
+ * Winux.io accounts aren't live yet, so this command is hidden (config/commands.php) and stops
+ * right away unless WINUX_ACCOUNT_LOGIN is set. The registration flow is kept for when they are.
+ */
 class LoginCommand extends Command
 {
-    protected $loggedIn = false;
-
     /**
      * The signature of the command.
      *
@@ -36,19 +35,21 @@ class LoginCommand extends Command
 
     /**
      * Execute the console command.
-     *
-     * @return mixed
      */
-    public function handle()
+    public function handle(): int
     {
+        if (!getenv('WINUX_ACCOUNT_LOGIN')) {
+            error('Logging in to a Winux.io account is not available yet.');
+            return self::FAILURE;
+        }
+
         $winuxAuthConnector = new WinuxAuthConnector();
         $registerRequest = new ClientRegistrationRequest();
         $registerResponse = $winuxAuthConnector->send($registerRequest);
         if ($registerResponse->failed()) {
             $this->warn('Failed to register this client with Winux.io. Error: ' . $registerResponse->status());
-            // $this->warn($registerResponse->json());
-            $this->error($registerResponse->json('message'));
-            return false;
+            $this->error((string) $registerResponse->json('message'));
+            return self::FAILURE;
         }
         $diceware = $registerResponse->json('dice');
         $authorizeUrl = $registerResponse->json('url');
@@ -67,13 +68,9 @@ class LoginCommand extends Command
             }
         }
 
-        spin(function () {
-            while (!$this->loggedIn) {
-                // TODO: Check if the user has authorized this client
-                sleep(1);
-            }
-        }, 'Waiting for you to login to your Winux.io Account...');
-
-        return self::SUCCESS;
+        // TODO: Poll Winux.io until the user has authorized this client, then store the token.
+        // Until that endpoint exists, stop here instead of waiting forever.
+        error('Waiting for the authorization is not implemented yet.');
+        return self::FAILURE;
     }
 }

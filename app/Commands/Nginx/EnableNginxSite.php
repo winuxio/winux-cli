@@ -12,13 +12,15 @@ class EnableNginxSite extends Command
 {
 	use ResolvesSite;
 
-	protected $signature = 'nginx:enable {domain? : Site name or domain (defaults to the project in the current directory)}';
+	protected $signature = 'nginx:enable
+		{domain? : Site name or domain (defaults to the project in the current directory)}
+		{--site= : Same as the domain argument}';
 
 	protected $description = 'Enable an nginx site';
 
 	public function handle(): int
 	{
-		$site = $this->resolveSite($this->argument('domain'));
+		$site = $this->resolveSite($this->option('site') ?? $this->argument('domain'));
 		if (!$site || !$site->enable()) {
 			return self::FAILURE;
 		}

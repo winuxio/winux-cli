@@ -8,6 +8,7 @@ use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Saloon\Laravel\SaloonServiceProvider;
+use Symfony\Component\Console\Input\ArgvInput;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -27,6 +28,12 @@ class AppServiceProvider extends ServiceProvider
         $this->app->register(SaloonServiceProvider::class);
 
         Artisan::starting(function ($artisan) {
+            // `winux --version` prints one plain line ("winux v1.2.3"); the banner is for `winux` / `winux list`
+            if ((new ArgvInput())->hasParameterOption(['--version', '-V'], true)) {
+                $artisan->setName('winux');
+                return;
+            }
+
             $artisan->setName(<<<'ASCII'
             
  __        _____ _   _ _   ___  __

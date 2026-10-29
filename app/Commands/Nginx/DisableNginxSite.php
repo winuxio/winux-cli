@@ -12,13 +12,15 @@ class DisableNginxSite extends Command
 {
 	use ResolvesSite;
 
-	protected $signature = 'nginx:disable {domain? : Site name or domain (defaults to the project in the current directory)}';
+	protected $signature = 'nginx:disable
+		{domain? : Site name or domain (defaults to the project in the current directory)}
+		{--site= : Same as the domain argument}';
 
 	protected $description = 'Disable an nginx site';
 
 	public function handle(): int
 	{
-		$site = $this->resolveSite($this->argument('domain'));
+		$site = $this->resolveSite($this->option('site') ?? $this->argument('domain'));
 		if (!$site || !$site->disable()) {
 			return self::FAILURE;
 		}
