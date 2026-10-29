@@ -28,7 +28,7 @@ curl -fsSL https://raw.githubusercontent.com/winuxio/winux-cli/main/install.sh |
 winux setup
 ```
 
-`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin` after checking its checksum. Set `WINUX_PHP=8.3` or `WINUX_VERSION=v1.0.0` to override the defaults.
+`install.sh` adds the PHP repository ([ondrej/php](https://launchpad.net/~ondrej/+archive/ubuntu/php) on Ubuntu, [sury](https://packages.sury.org/php/) on Debian), installs a PHP CLI and Composer, and puts the `winux` binary in `/usr/local/bin` after checking its checksum. Set `WINUX_PHP=8.3` or `WINUX_VERSION=v0.2.0` to override the defaults.
 
 `winux setup` then asks which PHP versions and which Postgres version you want, and installs:
 
@@ -151,10 +151,10 @@ winux ssl:root:install            # (re)trust the root CA in Linux and Windows
 └── backups/          # configs saved before winux edits them
 ```
 
-## Upgrading from 0.x
+## Upgrading from 0.1
 
 - Your sites, certificates, and root CA are all kept. Run `winux doctor` to check everything.
-- 0.x can't update itself: install 1.x once with `install.sh` (above), then use `winux self-update` from then on.
+- 0.1 can't update itself: install the latest release once with `install.sh` (above), then use `winux self-update` from then on.
 - Older versions installed to `/usr/sbin/winux`. Remove that copy with `sudo rm /usr/sbin/winux`.
 - The default site template now redirects HTTP to `https://$host`, so extra domains redirect to themselves. Older sites are updated the first time you add a domain to them.
 
@@ -172,7 +172,7 @@ php winux app:install:local
 
 Releases are automated with [release-please](https://github.com/googleapis/release-please):
 
-1. PRs are squash-merged, and their titles must be [conventional commits](https://www.conventionalcommits.org/) (checked by CI): `feat: ...` for features, `fix: ...` for bug fixes, `feat!: ...` for breaking changes. `docs:`, `chore:`, `refactor:`, `test:` and `ci:` don't trigger a release.
+1. PRs are squash-merged, and their titles must be [conventional commits](https://www.conventionalcommits.org/) (checked by CI): `feat: ...` for features, `fix: ...` for bug fixes, `feat!: ...` for breaking changes (a minor bump while winux is 0.x). `docs:`, `chore:`, `refactor:`, `test:` and `ci:` don't trigger a release.
 2. release-please keeps a `chore(main): release x.y.z` PR open with the version bump and `CHANGELOG.md`, updated as PRs land.
 3. Merging that PR tags the release. CI then runs the tests, builds the PHAR, and attaches `winux`, `winux.sha256` and a provenance attestation. Users get the update notice within a day.
 
