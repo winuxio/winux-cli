@@ -54,7 +54,7 @@ function postgresQueries(): array
 	$queries = [];
 	Process::assertRan(function ($process) use (&$queries) {
 		$command = (array) $process->command;
-		if (in_array('psql', $command, true) && in_array('postgres', $command, true) && !in_array('-tA', $command, true)) {
+		if (in_array('psql', $command, true) && in_array('postgres', $command, true) && !in_array('-tA', $command, true) && !in_array('-tAc', $command, true)) {
 			$queries[] = (string) $process->input;
 		}
 		return true;

@@ -6,6 +6,8 @@ use App\Classes\AptRepository;
 use App\Classes\Platform;
 use App\Classes\ServiceUser;
 use App\Classes\Settings;
+use App\Classes\Sudoers;
+use App\Classes\Upgrades;
 use App\Services\PhpFpm;
 use App\Services\Postgres;
 use LaravelZero\Framework\Commands\Command;
@@ -84,6 +86,9 @@ class Setup extends Command
 			'Redis' => fn () => $this->call('service:install', ['service' => 'redis']) === self::SUCCESS,
 			// Also covers PHP versions that were already installed (and so skipped above)
 			'Run nginx and PHP-FPM as you' => fn () => $this->call('service:configure') === self::SUCCESS,
+			// So creating projects doesn't keep asking for a password
+			"Postgres $pgVersion without sudo" => fn () => !Postgres::make($pgVersion)->isInstalled() || Postgres::make($pgVersion)->grantPeerAccess(),
+			'Passwordless nginx/PHP-FPM reloads' => fn () => $this->passwordlessReloads(),
 			'SSL' => fn () => $this->call('ssl:root:install', array_filter(['--skip-windows' => $this->option('skip-windows')])) === self::SUCCESS,
 		];
 
@@ -109,8 +114,27 @@ class Setup extends Command
 			error('Setup finished with failures: ' . implode(', ', $failed));
 		}
 
+		// A new machine starts with every setup change, so self-update has none to bring
+		if (!$failed) {
+			Upgrades::markApplied();
+		}
+
 		$this->call('doctor');
 
 		return $failed ? self::FAILURE : self::SUCCESS;
+	}
+
+	protected function passwordlessReloads(): bool
+	{
+		if (Sudoers::declined()) {
+			return true;
+		}
+
+		if (!confirm('Let winux check and reload nginx and PHP-FPM without asking for your password?', true, hint: 'Adds ' . Sudoers::path() . ' for those exact commands only. `winux sudoers --remove` undoes it.')) {
+			Sudoers::setDeclined(true);
+			return true;
+		}
+
+		return Sudoers::install();
 	}
 }

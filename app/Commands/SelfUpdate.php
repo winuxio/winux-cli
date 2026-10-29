@@ -113,7 +113,7 @@ class SelfUpdate extends Command
 
 		return $this->install($binary, $download, $backup, "Updated winux to {$release['version']}.", function () {
 			UpdateCheck::store(['latest' => null]);
-		});
+		}, applySetup: true);
 	}
 
 	protected function rollback(string $binary): int
@@ -181,7 +181,7 @@ class SelfUpdate extends Command
 	 * On success, exits straight away when the running PHAR was replaced: once the file changes,
 	 * this process can't load anything else from it.
 	 */
-	protected function install(string $binary, string $new, ?string $backup, string $message, ?callable $after = null): int
+	protected function install(string $binary, string $new, ?string $backup, string $message, ?callable $after = null, bool $applySetup = false): int
 	{
 		try {
 			try {
@@ -214,6 +214,13 @@ class SelfUpdate extends Command
 		}
 
 		info($message);
+
+		// The new version knows what it changed about the machine's setup, so it applies that itself
+		// (and does nothing when there's nothing to apply). passthru, because once the running PHAR
+		// is replaced this process can't autoload anything new; it also keeps the terminal for prompts.
+		if ($applySetup && $this->input->isInteractive() && stream_isatty(STDIN)) {
+			passthru(escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($binary) . ' doctor --upgrade');
+		}
 
 		if ($binary !== \Phar::running(false)) {
 			return self::SUCCESS;

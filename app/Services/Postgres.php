@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Classes\AptRepository;
 use App\Classes\Platform;
+use App\Classes\ServiceUser;
 use App\Classes\Settings;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
@@ -16,6 +17,12 @@ class Postgres extends Service
 
 	/** @var array<string, array{port: int, status: string}>|null */
 	protected static ?array $clusters = null;
+
+	/** Whether you can connect as your own superuser role, by port */
+	protected static array $peerAccess = [];
+
+	/** Postgres' default socket directory on Ubuntu and Debian */
+	public const SOCKET_DIRECTORY = '/var/run/postgresql';
 
 	public function __construct(?string $version = null)
 	{
@@ -64,7 +71,13 @@ class Postgres extends Service
 
 	protected function postInstall(): bool
 	{
-		static::$clusters = null;
+		static::flushClusterCache();
+
+		// Your own superuser role, so projects don't need `sudo -u postgres` (a failure isn't fatal: sudo still works)
+		if (!$this->grantPeerAccess()) {
+			warning('winux will use sudo for Postgres until `winux doctor --fix` creates your role.');
+		}
+
 		return true;
 	}
 
@@ -198,6 +211,64 @@ class Postgres extends Service
 	public static function flushClusterCache(): void
 	{
 		static::$clusters = null;
+		static::$peerAccess = [];
+	}
+
+	/** Your Linux user name, which is also the name of your Postgres role */
+	public static function peerRole(): ?string
+	{
+		return ServiceUser::current()['name'] ?? null;
+	}
+
+	/**
+	 * Whether you can connect to this cluster as a superuser role named after you, over the local
+	 * socket: Ubuntu's and Debian's Postgres let a Linux user in as the matching role without a password.
+	 */
+	public function hasPeerAccess(): bool
+	{
+		$port = $this->getPort();
+		if (isset(static::$peerAccess[$port])) {
+			return static::$peerAccess[$port];
+		}
+
+		$role = static::peerRole();
+		if ($role === null || $role === 'root') {
+			return static::$peerAccess[$port] = false;
+		}
+
+		$process = Process::path('/')->env(['PGCONNECT_TIMEOUT' => '5'])->timeout(15)->run([
+			'psql', '-w', '-h', static::SOCKET_DIRECTORY, '-p', (string) $port, '-U', $role, '-d', 'postgres',
+			'-tAc', 'SELECT rolsuper FROM pg_roles WHERE rolname = current_user',
+		]);
+
+		return static::$peerAccess[$port] = $process->successful() && trim($process->output()) === 't';
+	}
+
+	/**
+	 * Create (once, through sudo) the superuser role named after you, so winux stops needing sudo
+	 * for Postgres. A role with your name that isn't a superuser belongs to a project, and is left alone.
+	 */
+	public function grantPeerAccess(): bool
+	{
+		$role = static::peerRole();
+		if ($role === null || $role === 'root') {
+			error("Can't tell which Linux user to create a Postgres role for.");
+			return false;
+		}
+
+		if ($this->hasPeerAccess()) {
+			return true;
+		}
+
+		if ($this->userExists($role)) {
+			error("Postgres {$this->version} already has a role named '$role' that isn't a superuser (probably a project's), so winux will keep using sudo for it.");
+			return false;
+		}
+
+		$created = $this->query('CREATE ROLE ' . static::identifier($role) . ' WITH LOGIN SUPERUSER');
+		unset(static::$peerAccess[$this->getPort()]);
+
+		return $created && $this->hasPeerAccess();
 	}
 
 	/**
@@ -327,9 +398,10 @@ class Postgres extends Service
 		$db = static::identifier($databaseName);
 		$user = static::identifier($username);
 
-		// A database another role already owns (e.g. an imported one) keeps its owner; the user just gets access
+		// A database another role already owns (e.g. an imported one) keeps its owner; the user just gets access.
+		// One the superuser winux connects as owns (postgres, or your own role) was made by winux, and is handed over
 		$owner = $this->databaseOwner($databaseName);
-		if ($owner !== null && $owner !== 'postgres' && $owner !== $username) {
+		if ($owner !== null && !in_array($owner, ['postgres', static::peerRole(), $username], true)) {
 			warning("'$databaseName' is owned by '$owner'; granting '$username' access instead of taking ownership.");
 
 			return $this->query("GRANT ALL PRIVILEGES ON DATABASE $db TO $user")
@@ -374,13 +446,18 @@ class Postgres extends Service
 	}
 
 	/**
-	 * psql as the postgres superuser. SQL is always sent on stdin (`-f -`), never as an argument,
-	 * so passwords in it don't show up in `ps` or in sudo's log.
+	 * psql as a superuser: your own role when you have one, otherwise postgres through sudo. SQL is
+	 * always sent on stdin (`-f -`), never as an argument, so passwords in it don't show up in `ps`
+	 * or in sudo's log.
 	 */
 	protected function psql(array $args, string $database = 'postgres'): array
 	{
+		$connect = $this->hasPeerAccess()
+			? ['psql', '-w', '-h', static::SOCKET_DIRECTORY, '-U', (string) static::peerRole()]
+			: ['sudo', '-u', 'postgres', 'psql'];
+
 		return [
-			'sudo', '-u', 'postgres', 'psql',
+			...$connect,
 			'-p', (string) $this->getPort(),
 			'-d', $database,
 			'-v', 'ON_ERROR_STOP=1',

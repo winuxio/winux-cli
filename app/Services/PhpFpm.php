@@ -6,10 +6,12 @@ use App\Classes\Apt;
 use App\Classes\AptRepository;
 use App\Classes\ServiceUser;
 use App\Classes\Settings;
+use App\Classes\Sudoers;
 use App\Classes\SystemFile;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\error;
+use function Laravel\Prompts\warning;
 
 class PhpFpm extends Service
 {
@@ -72,7 +74,16 @@ class PhpFpm extends Service
 	protected function postInstall(): bool
 	{
 		$user = ServiceUser::resolve();
-		return $user !== null && $this->runAs($user['name'], $user['group']);
+		if ($user === null || !$this->runAs($user['name'], $user['group'])) {
+			return false;
+		}
+
+		// The passwordless rules list each PHP version's commands, so they gain this one
+		if (Sudoers::isInstalled() && !Sudoers::install()) {
+			warning("PHP {$this->version} FPM reloads will ask for your password until you run `winux sudoers`.");
+		}
+
+		return true;
 	}
 
 	public function poolFile(): string
