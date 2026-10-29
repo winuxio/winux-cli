@@ -41,8 +41,8 @@ trait PreparesProject
 		}
 
 		// An imported project whose .env already connects (even to a non-winux Postgres) needs nothing installed
-		if (!$project->envDatabaseWorks() && !Postgres::make($project->postgresVersion)->isInstalled()) {
-			error("Postgres {$project->postgresVersion} isn't installed. Run `winux service:install postgres {$project->postgresVersion}` or pass --pg.");
+		if (!$project->envDatabaseWorks() && ($reason = Postgres::versionError($project->postgresVersion))) {
+			error($reason . ' Or pass --pg.');
 			return null;
 		}
 
@@ -81,19 +81,27 @@ trait PreparesProject
 		$this->offerHostsEntries($project->extraDomains);
 	}
 
-	protected function offerMigrations(Project $project): void
+	/**
+	 * Runs migrations when $run is true, asks when it's null (taking $default without a terminal).
+	 * Returns false only if migrations ran and failed.
+	 */
+	protected function offerMigrations(Project $project, ?bool $run = null, bool $default = false): bool
 	{
-		if (!$this->input->isInteractive() || !confirm('Run database migrations now?', true)) {
-			return;
+		$run ??= $this->input->isInteractive() ? confirm('Run database migrations now?', true) : $default;
+		if (!$run) {
+			return true;
 		}
 
 		$process = Process::path($project->path)->forever()->run(
-			[$project->phpBinary(), 'artisan', 'migrate', '--force'],
+			[$project->phpBinary(), 'artisan', 'migrate', '--force', '--no-interaction'],
 			fn ($type, $buffer) => $this->output->write($buffer)
 		);
 
 		if ($process->failed()) {
 			warning('Migrations failed; fix the issue and run `php artisan migrate` yourself.');
+			return false;
 		}
+
+		return true;
 	}
 }

@@ -7,7 +7,7 @@ use App\Commands\Concerns\PreparesProject;
 use App\Enums\Editors;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, confirm, error, info, select};
+use function Laravel\Prompts\{alert, confirm, error, info, select, warning};
 
 class ImportProject extends Command
 {
@@ -17,7 +17,8 @@ class ImportProject extends Command
 		{projectName : The project directory (in the current directory) to configure}
 		{--php= : PHP version (defaults to `winux php:default`)}
 		{--pg= : Postgres version (defaults to the one matching DB_PORT in .env, then `winux postgres:default`)}
-		{--domain=* : Extra domains the site should also answer to}';
+		{--domain=* : Extra domains the site should also answer to}
+		{--migrate : Run migrations without asking (with --no-interaction they are skipped otherwise)}';
 
 	protected $description = 'Configure nginx, SSL, a database, and .env for an existing project (reusing its database when .env already works)';
 
@@ -60,7 +61,18 @@ class ImportProject extends Command
 
 		info("{$project->name}'s .env file updated successfully!");
 
-		$this->offerMigrations($project);
+		// A fresh checkout has no vendor/ and (from .env.example) no APP_KEY; without them every request fails
+		if (!$project->installDependencies()) {
+			alert("The site is configured, but the app can't run until its Composer dependencies are installed.");
+			return self::FAILURE;
+		}
+
+		if (!$project->ensureAppKey()) {
+			alert("The site is configured, but the app can't run without an APP_KEY. Run `php artisan key:generate` in {$project->path}.");
+			return self::FAILURE;
+		}
+
+		$migrated = $this->offerMigrations($project, $this->option('migrate') ? true : null);
 
 		$this->title('Project imported successfully!');
 
@@ -76,7 +88,11 @@ class ImportProject extends Command
 			$project->openBrowser();
 		}
 
-		info("{$project->name} is live at https://{$project->getDomain()}");
+		if ($migrated) {
+			info("{$project->name} is live at https://{$project->getDomain()}");
+		} else {
+			warning("{$project->name} is served at https://{$project->getDomain()}, but its migrations failed (see above).");
+		}
 		$this->reportExtraDomains($project);
 
 		return self::SUCCESS;

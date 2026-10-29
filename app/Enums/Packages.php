@@ -2,6 +2,7 @@
 
 namespace App\Enums;
 
+use App\Classes\Project;
 use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\error;
@@ -27,7 +28,7 @@ enum Packages: string
 
 	protected function installFilament(string $path, string $php): bool
 	{
-		$composer = trim(Process::run(['sh', '-c', 'command -v composer'])->output()) ?: 'composer';
+		$composer = Project::composerPath() ?? 'composer';
 
 		// No constraint: composer picks the newest Filament compatible with the project
 		$process = Process::path($path)->forever()->run([$php, $composer, 'require', 'filament/filament', '-W']);

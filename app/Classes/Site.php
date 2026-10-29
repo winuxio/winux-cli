@@ -4,6 +4,7 @@ namespace App\Classes;
 
 use App\Services\Nginx;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Process;
 
 use function Laravel\Prompts\{alert, error, info, warning};
 
@@ -124,6 +125,34 @@ class Site
 	#endregion
 
 	#region Changes
+	/**
+	 * Why the project's locked Composer dependencies won't run on the given PHP version, or null if
+	 * they will (or it can't be told: no vendor/composer/platform_check.php, or no CLI for that version).
+	 * platform_check.php is what makes every request fail with "Composer detected issues in your platform".
+	 */
+	public function platformIssues(string $version): ?string
+	{
+		$path = $this->projectPath();
+		$binary = config('winux.php.bin', '/usr/bin') . "/php$version";
+
+		if (!$path || !is_file("$path/vendor/composer/platform_check.php") || !is_executable($binary)) {
+			return null;
+		}
+
+		$process = Process::path($path)->run([$binary, '-r', 'require "vendor/composer/platform_check.php";']);
+		if ($process->successful()) {
+			return null;
+		}
+
+		$output = trim($process->errorOutput() . "\n" . $process->output());
+		// The check prints the issues, then throws a RuntimeException that repeats them
+		if (preg_match('/Composer detected issues in your platform:\s*(.+?)(?:\s+in\s+\/\S+:\d+|\n\s*\n|PHP Fatal error|Fatal error|$)/s', $output, $matches)) {
+			return 'Composer detected issues in your platform: ' . trim($matches[1]);
+		}
+
+		return $output ?: "The platform check failed on PHP $version.";
+	}
+
 	/**
 	 * Points the site at a different php-fpm version.
 	 */
