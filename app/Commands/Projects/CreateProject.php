@@ -49,8 +49,8 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
-		// A new project never adopts an existing database or user (e.g. my_app's, for my-app)
-		if (!$project->ensureDatabaseIsFree()) {
+		// Never another project's database (e.g. my_app's, for my-app); a deleted project's leftovers can be picked back up
+		if (!$project->claimExistingDatabase()) {
 			return Command::FAILURE;
 		}
 

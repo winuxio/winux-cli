@@ -42,6 +42,9 @@ class Project
 	/** Import found working credentials in .env, so its DB_* values are left alone */
 	protected bool $keepEnvDatabase = false;
 
+	/** A new project adopting the database and user an earlier, deleted project left behind */
+	protected bool $reuseDatabase = false;
+
 	protected ?bool $envDatabaseWorks = null;
 
 	protected bool $hasRepo = false;
@@ -220,23 +223,61 @@ class Project
 	public function setupDatabase(bool $reuse = false): bool
 	{
 		$this->dbPassword = Postgres::generatePassword();
-		return $this->postgres()->createAll($this->dbName, $this->dbUser, $this->dbPassword, $reuse);
+		return $this->postgres()->createAll($this->dbName, $this->dbUser, $this->dbPassword, $reuse || $this->reuseDatabase);
 	}
 
 	/**
-	 * For a new project: refuses when its database or user already exists, since another project
-	 * (e.g. my_app for my-app) may be using them.
+	 * For a new project whose database or user already exists: refuses if another winux project's
+	 * .env uses them (e.g. my_app's, for my-app). Otherwise they were left behind by a deleted
+	 * project with this name, so offers to pick them back up, data and all.
 	 */
-	public function ensureDatabaseIsFree(): bool
+	public function claimExistingDatabase(): bool
 	{
 		$postgres = $this->postgres();
 		if (!($existing = $postgres->existing($this->dbName, $this->dbUser))) {
 			return true;
 		}
 
-		error('The Postgres ' . implode(' and the ', $existing) . " already exist on {$postgres->label()}. Another project may be using them.");
-		note("Pick a different project name, or drop them first with `winux postgres:delete {$this->dbName}` if nothing uses them.");
-		return false;
+		$described = 'the Postgres ' . implode(' and the ', $existing) . " on {$postgres->label()}";
+		if ($user = $this->otherProjectUsing($this->dbName, $this->dbUser)) {
+			error(ucfirst($described) . " already exist and are used by $user.");
+			note('Pick a different project name.');
+			return false;
+		}
+
+		warning(ucfirst($described) . ' already exist, but no other winux project uses them (probably left from an earlier project named this).');
+		if (!confirm('Reuse them? Their data is kept, and the user gets a new password.', true)) {
+			note("Pick a different project name, or drop them first with `winux postgres:delete {$this->dbName} --pg={$postgres->version}`.");
+			return false;
+		}
+
+		return $this->reuseDatabase = true;
+	}
+
+	/**
+	 * The site of another winux project whose .env points at this database or user on the same cluster.
+	 * Only projects with a winux site are visible; anything else using the database isn't.
+	 */
+	public function otherProjectUsing(string $database, string $username): ?string
+	{
+		$port = $this->postgres()->getPort();
+
+		foreach (Site::all() as $site) {
+			$path = $site->projectPath();
+			if (!$path || rtrim($path, '/') === rtrim($this->path, '/')) {
+				continue;
+			}
+
+			$env = static::readEnv($path . DIRECTORY_SEPARATOR . '.env');
+			$local = in_array($env['DB_HOST'] ?? '127.0.0.1', ['127.0.0.1', 'localhost', '::1'], true);
+
+			if (($env['DB_CONNECTION'] ?? null) === 'pgsql' && $local && (int) ($env['DB_PORT'] ?? 5432) === $port
+				&& (($env['DB_DATABASE'] ?? null) === $database || ($env['DB_USERNAME'] ?? null) === $username)) {
+				return "{$site->domain} ($path)";
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -305,6 +346,13 @@ class Project
 			return false;
 		}
 
+		// The project-named database (e.g. my_app) may belong to another project (e.g. my-app)
+		if ($postgres->existing($this->dbName, $this->dbUser) && ($user = $this->otherProjectUsing($this->dbName, $this->dbUser))) {
+			error("The database '{$this->dbName}' or user '{$this->dbUser}' on {$postgres->label()} is used by $user; winux won't change it for this project.");
+			note('Point DB_DATABASE and DB_USERNAME in .env at a database of its own (or fix DB_PASSWORD if it really is shared), then run the import again.');
+			return false;
+		}
+
 		$userExists = $postgres->userExists($this->dbUser);
 		if ($userExists) {
 			warning("The Postgres user '{$this->dbUser}' exists, but the credentials in .env don't work for it.");
@@ -368,14 +416,17 @@ class Project
 
 	protected function envValue(string $key): ?string
 	{
-		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
-		if (!is_file($envFile)) {
-			return null;
+		return static::readEnv($this->path . DIRECTORY_SEPARATOR . '.env')[$key] ?? null;
+	}
+
+	/** @return array<string, string> KEY => unquoted value */
+	public static function readEnv(string $envFile): array
+	{
+		if (!is_file($envFile) || !preg_match_all('/^([A-Z0-9_]+)=(.*)$/m', (string) @file_get_contents($envFile), $matches, PREG_SET_ORDER)) {
+			return [];
 		}
 
-		return preg_match('/^' . preg_quote($key, '/') . '=(.*)$/m', File::get($envFile), $matches)
-			? trim($matches[1], " \t\"'")
-			: null;
+		return collect($matches)->mapWithKeys(fn ($match) => [$match[1] => trim($match[2], " \t\"'")])->all();
 	}
 
 	private function updateEnv(array $newValues, bool $overwrite = true): bool

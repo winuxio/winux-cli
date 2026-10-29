@@ -82,7 +82,12 @@ Creating or importing a project:
 - updates `.env`
 - optionally runs migrations, creates a GitHub repo, installs Filament, and opens your editor and browser
 
-`project:create` (and `postgres:create`) never take over a database or user that already exists. Since `my-app` and `my_app` both map to the database `my_app`, creating the second one stops with an error instead of sharing (and resetting the password of) the first one's database.
+When a project's database or user already exists, `project:create` and `project:import` check whether another winux project's `.env` uses it:
+
+- **Another project uses it:** they stop. Since `my-app` and `my_app` both map to the database `my_app`, creating or importing the second one won't share (and reset the password of) the first one's database.
+- **Nothing uses it:** it was left behind by a deleted project with the same name (`project:delete` keeps the database unless you ask). They offer to pick it back up, data included, and give the user a new password; this is the default answer, including with `--no-interaction`.
+
+Only projects with a winux site are checked, so a database used by something else entirely isn't detected. `postgres:create` always refuses an existing database or user.
 
 Import is safe to run on a project that's already set up, or one that's half set up:
 

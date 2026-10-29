@@ -133,15 +133,62 @@ it('keeps the domain of a site that already serves the directory', function () {
 #endregion
 
 #region Collisions
-it('refuses to create a project whose database already exists', function () {
+it('refuses to create a project whose database another project uses', function () {
 	fakeProjectProcesses(['databases' => ['my_app'], 'users' => ['my_app']]);
+	legacySite($this->root, 'my_app');
+	writeEnv("{$this->root}/projects/my_app", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5433', 'DB_DATABASE' => 'my_app', 'DB_USERNAME' => 'my_app']);
 
 	expect(Artisan::call('project:create', ['projectName' => 'my-app', '--no-interaction' => true]))->toBe(1)
-		->and(Artisan::output())->toContain("database 'my_app'")->toContain("user 'my_app'");
+		->and(Artisan::output())->toContain("database 'my_app'")->toContain('used by my_app.local.winux.io');
 
 	// Checked before composer creates anything, and nothing was reset
 	expect(ranCommand('create-project'))->toBeFalse()
 		->and(superuserStatements())->toBe([]);
+});
+
+it('ignores projects on another cluster or host when checking who uses a database', function () {
+	fakeProjectProcesses(['databases' => ['my_app'], 'users' => ['my_app']]);
+	legacySite($this->root, 'other');
+	writeEnv("{$this->root}/projects/other", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5432', 'DB_DATABASE' => 'my_app']);
+
+	expect(Project::create('my-app')->otherProjectUsing('my_app', 'my_app'))->toBeNull();
+});
+
+it('picks up the database a deleted project with the same name left behind', function () {
+	fakeProjectProcesses(['databases' => ['my_app'], 'users' => ['my_app']]);
+
+	$project = Project::create('my-app');
+
+	// Outside a command, prompts take their default answer (see TestCase): reuse
+	expect($project->claimExistingDatabase())->toBeTrue()
+		->and($project->setupDatabase())->toBeTrue();
+
+	$statements = superuserStatements();
+	expect(collect($statements)->contains(fn ($sql) => str_starts_with($sql, 'CREATE')))->toBeFalse()
+		->and(collect($statements)->contains(fn ($sql) => str_starts_with($sql, 'ALTER ROLE "my_app" WITH LOGIN PASSWORD')))->toBeTrue();
+});
+
+it('stops when you decline the leftover database', function () {
+	fakeProjectProcesses(['databases' => ['my_app'], 'users' => ['my_app']]);
+
+	$this->artisan('project:create', ['projectName' => 'my-app'])
+		->expectsConfirmation('Reuse them? Their data is kept, and the user gets a new password.', 'no')
+		->assertFailed();
+
+	expect(ranCommand('create-project'))->toBeFalse()
+		->and(superuserStatements())->toBe([]);
+});
+
+it('refuses to import onto the project-named database when another project uses it', function () {
+	fakeProjectProcesses(['databases' => ['my_app'], 'users' => ['my_app']]);
+	legacySite($this->root, 'my_app');
+	writeEnv("{$this->root}/projects/my_app", ['DB_CONNECTION' => 'pgsql', 'DB_PORT' => '5433', 'DB_DATABASE' => 'my_app', 'DB_USERNAME' => 'my_app']);
+	File::ensureDirectoryExists("{$this->root}/work/my-app/public");
+
+	expect(Artisan::call('project:import', ['projectName' => 'my-app', '--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('is used by my_app.local.winux.io');
+
+	expect(superuserStatements())->toBe([]);
 });
 
 it('refuses postgres:create when the user already exists', function () {
