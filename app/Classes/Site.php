@@ -157,13 +157,24 @@ class Site
 			return true;
 		}
 
-		$backup = $this->backup($previous);
-		File::put($this->configFile, $config->contents);
+		if (!($backup = $this->backup($previous))) {
+			error("Failed to back up {$this->configFile}; leaving it unchanged.");
+			return false;
+		}
+
+		if (File::put($this->configFile, $config->contents) === false) {
+			File::put($this->configFile, $previous);
+			error("Failed to write {$this->configFile} (backup: $backup).");
+			return false;
+		}
 
 		$nginx = Nginx::make();
 		if ($this->isEnabled() && ($result = $nginx->test()) !== true) {
-			File::put($this->configFile, $previous);
-			alert('The updated nginx config failed validation; the previous config was restored.');
+			if (File::put($this->configFile, $previous) === false) {
+				alert("The updated nginx config failed validation, and restoring it failed. Copy $backup back to {$this->configFile}.");
+			} else {
+				alert('The updated nginx config failed validation; the previous config was restored.');
+			}
 			error($result);
 			return false;
 		}
@@ -172,14 +183,22 @@ class Site
 		return !$this->isEnabled() || $nginx->reload();
 	}
 
-	protected function backup(string $contents): string
+	/**
+	 * Saves a copy to ~/.winux/backups. Returns its path, or null if it couldn't be written.
+	 */
+	protected function backup(string $contents): ?string
 	{
 		$dir = config('winux.paths.base') . DIRECTORY_SEPARATOR . 'backups';
 		File::ensureDirectoryExists($dir);
 
-		$path = $dir . DIRECTORY_SEPARATOR . $this->domain . '.' . date('Ymd-His') . '.conf';
-		File::put($path, $contents);
-		return $path;
+		// Microseconds plus a counter, so two edits in the same second never overwrite each other's backup
+		$stem = $dir . DIRECTORY_SEPARATOR . $this->domain . '.' . (new \DateTimeImmutable())->format('Ymd-His-u');
+		$path = "$stem.conf";
+		for ($i = 1; file_exists($path); $i++) {
+			$path = "$stem-$i.conf";
+		}
+
+		return File::put($path, $contents) === false ? null : $path;
 	}
 	#endregion
 
@@ -203,6 +222,67 @@ class Site
 
 		info('Site enabled successfully!');
 		return true;
+	}
+
+	/**
+	 * Enables the site and validates nginx with it. A site that wasn't enabled before is disabled again
+	 * if validation fails, so one bad config can't stop nginx from starting for every other site.
+	 */
+	public function enableVerified(): bool
+	{
+		$wasEnabled = $this->isEnabled();
+		if (!$this->enable()) {
+			return false;
+		}
+
+		if (($result = Nginx::make()->test()) === true) {
+			return true;
+		}
+
+		if (!$wasEnabled) {
+			$this->disable();
+		}
+		alert("nginx rejected the config for {$this->domain}" . ($wasEnabled ? '.' : ', so it was disabled again.'));
+		error($result);
+		return false;
+	}
+
+	/**
+	 * Writes, enables, and validates a brand-new site. It's removed again if any step fails.
+	 */
+	public function createAndEnable(?string $phpVersion = null, array $extraDomains = []): bool
+	{
+		if ($this->exists()) {
+			warning("{$this->configFile} already exists; leaving it untouched.");
+			return $this->enableVerified();
+		}
+
+		if (!$this->generateAndSave($phpVersion, $extraDomains)) {
+			return false;
+		}
+
+		if (!$this->enableVerified()) {
+			$this->disable();
+			$this->delete();
+			warning("Removed the new config for {$this->domain}.");
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Why a project path can't be used as an nginx root, or null if it can.
+	 * The root is written as a double-quoted string, so quotes, `$` (variables), backslashes,
+	 * and anything that would end the directive are refused.
+	 */
+	public static function unsafePathReason(string $path): ?string
+	{
+		if (preg_match('/[";{}$\\\\\x00-\x1F\x7F]/', $path)) {
+			return "The path '$path' contains characters nginx can't serve from (\", ;, {, }, \$, \\, or control characters). Move the project somewhere without them.";
+		}
+
+		return null;
 	}
 
 	public function disable(): bool
@@ -241,6 +321,11 @@ class Site
 		if ($this->exists()) {
 			warning("{$this->configFile} already exists; leaving it untouched.");
 			return true;
+		}
+
+		if ($reason = static::unsafePathReason((string) $this->path)) {
+			error($reason);
+			return false;
 		}
 
 		return $this->save($this->generate($phpVersion, $extraDomains));

@@ -69,21 +69,33 @@ winux project:create my-app                       # new Laravel app, served at h
 winux project:create my-app --php=8.3 --pg=16     # pick versions per project
 winux project:create my-app --domain=my-app.test  # also answer to extra domains
 winux project:import my-app                       # wire up an existing checkout in ./my-app
-winux project:delete my-app
+winux project:delete my-app                       # remove its site and certificate (asks about the database and files)
+winux project:delete my-app --force --delete-database --delete-files  # no prompts, everything
 ```
+
+**Project names** are the name of a directory in the current directory. They may contain letters, digits, hyphens and underscores, and must start and end with a letter or digit. The directory keeps the name exactly as you typed it, while the domain and database use a lowercase form with underscores turned into hyphens: `My_App` lives in `./My_App`, is served at `https://my-app.local.winux.io`, and gets the database `my_app`. If a site already serves that directory (for example `My_App.local.winux.io` from an older winux), it's kept. Paths with spaces (like `/mnt/c/Users/John Doe/code`) are fine, but nginx can't serve from a path containing `"`, `;`, `{`, `}`, `$` or `\`, so those are refused.
 
 Creating or importing a project:
 
-- generates an nginx site and a certificate
+- generates an nginx site and a certificate, checks the result with `nginx -t`, and removes the new site again if nginx rejects it
 - creates a Postgres database and user
 - updates `.env`
 - optionally runs migrations, creates a GitHub repo, installs Filament, and opens your editor and browser
 
+When a project's database or user already exists, `project:create` and `project:import` check whether another winux project's `.env` uses it:
+
+- **Another project uses it:** they stop. Since `my-app` and `my_app` both map to the database `my_app`, creating or importing the second one won't share (and reset the password of) the first one's database.
+- **Nothing uses it:** it was left behind by a deleted project with the same name (`project:delete` keeps the database unless you ask). They offer to pick it back up, data included, and give the user a new password; this is the default answer, including with `--no-interaction`.
+
+Only projects with a winux site are checked, so a database used by something else entirely isn't detected. `postgres:create` always refuses an existing database or user.
+
 Import is safe to run on a project that's already set up, or one that's half set up:
 
-- **Database:** if the credentials in `.env` already work, they're used as they are and the database isn't touched. If the database named in `.env` exists but the login fails, winux keeps that database. It then creates the user, or offers to reset the user's password. Only when nothing exists does it create a database and user named after the project.
+- **Database:** if the credentials in `.env` already work, they're used as they are and the database isn't touched. If the database named in `.env` exists but the login fails, winux keeps that database. It then creates the user, or offers to reset the user's password. Only when nothing exists does it create a database and user named after the project. winux never changes the `postgres` user or any other superuser, so if `.env` uses one and its login fails, import stops and asks you to fix `DB_PASSWORD` or switch to an app-specific user. A database already owned by another user keeps its owner; the app's user is granted access to it.
 - **`.env`:** import always updates `APP_URL` and any `DB_*` values it changed. Other settings (`APP_NAME`, cache, session, queue) are only filled in when they're missing.
 - **nginx:** an existing site config is kept. Its PHP version only changes if you pass `--php`.
+
+`project:delete` lists exactly what it will remove before asking: the site (and hosts entries for its extra domains) and the certificate. It then asks separately whether to drop the database and user, and whether to delete the project directory; both default to no, and `--delete-database` / `--delete-files` say yes up front. The database and user are the ones in the project's `.env` (or the ones named after the project when there's no `.env`). The `postgres` and `template*` databases and superuser roles are never dropped, and a database that isn't on a winux Postgres cluster is left alone. It still cleans up if the project directory is already gone. Use `--force` to skip the confirmations (it's required with `--no-interaction`, which keeps the database and files unless you pass the flags).
 
 `*.local.winux.io` resolves to `127.0.0.1` through public DNS, so no hosts file edits are needed.
 

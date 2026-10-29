@@ -34,9 +34,16 @@ class NginxConfig
 		return preg_match('/php(\d+\.\d+)-fpm\.sock/', $this->contents, $matches) ? $matches[1] : null;
 	}
 
+	/**
+	 * The web root, quoted (what winux writes now) or unquoted (older and hand-written configs).
+	 */
 	public function root(): ?string
 	{
-		return preg_match('/^\s*root\s+([^;]+);/m', $this->contents, $matches) ? trim($matches[1]) : null;
+		if (!preg_match('/^\s*root\s+(?:"([^"]*)"|\'([^\']*)\'|([^;]+?))\s*;/m', $this->contents, $matches)) {
+			return null;
+		}
+
+		return trim(($matches[1] ?? '') . ($matches[2] ?? '') . ($matches[3] ?? ''));
 	}
 
 	public function withDomains(array $domains): static

@@ -46,3 +46,14 @@ it('round-trips removing extra domains', function () {
 
 	expect($config->domains())->toBe(['legacy-app.local.winux.io']);
 });
+
+it('reads quoted and unquoted roots', function (string $directive, string $root) {
+	$config = new NginxConfig("server {\n\tlisten 443 ssl;\n\t$directive\n\tindex index.php;\n}\n");
+
+	expect($config->root())->toBe($root);
+})->with([
+	'unquoted' => ['root /home/dev/app/public;', '/home/dev/app/public'],
+	'double quoted' => ['root "/home/dev/app/public";', '/home/dev/app/public'],
+	'double quoted with spaces' => ['root "/mnt/c/Users/John Doe/app/public" ;', '/mnt/c/Users/John Doe/app/public'],
+	'single quoted' => ["root '/home/dev/my app/public';", '/home/dev/my app/public'],
+]);

@@ -22,7 +22,10 @@ use function Laravel\Prompts\warning;
 
 class Project
 {
+	/** The project directory's name, exactly as given (e.g. My_App) */
 	public string $name;
+	/** The lowercase, DNS-safe form used for the domain and database (e.g. my-app) */
+	public string $slug;
 	public string $path;
 	public Frameworks $framework = Frameworks::Laravel;
 	public Site $site;
@@ -39,25 +42,76 @@ class Project
 	/** Import found working credentials in .env, so its DB_* values are left alone */
 	protected bool $keepEnvDatabase = false;
 
+	/** A new project adopting the database and user an earlier, deleted project left behind */
+	protected bool $reuseDatabase = false;
+
 	protected ?bool $envDatabaseWorks = null;
 
 	protected bool $hasRepo = false;
 
+	protected ?string $domain = null;
+
 	public function getDomain(): string
 	{
-		return $this->name . '.' . config('winux.nginx.domain');
+		return $this->domain ?? $this->slug . '.' . config('winux.nginx.domain');
 	}
 
 	/**
-	 * Create a new project instance in the current directory
+	 * Why a project name (a directory in the current directory) can't be used, or null if it can.
+	 * Letters, digits, hyphens and underscores, starting with a letter or digit. The lowercase form,
+	 * with underscores as hyphens, must be a valid DNS label since it becomes the site's domain.
+	 */
+	public static function nameError(string $name): ?string
+	{
+		$rule = 'Use letters, digits, hyphens and underscores, starting and ending with a letter or digit (e.g. my-app).';
+
+		if (!preg_match('/^[A-Za-z0-9][A-Za-z0-9_-]*$/', $name)) {
+			return "'$name' isn't a valid project name. $rule";
+		}
+
+		if (!preg_match('/^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$/', static::slug($name))) {
+			return "'$name' isn't a valid project name: '" . static::slug($name) . "' must be a valid domain label (at most 63 characters). $rule";
+		}
+
+		return null;
+	}
+
+	/**
+	 * Why a project can't be set up in the current directory (bad name or a path nginx can't serve), or null.
+	 */
+	public static function validationError(string $name): ?string
+	{
+		return static::nameError($name) ?? Site::unsafePathReason(getcwd() . DIRECTORY_SEPARATOR . $name);
+	}
+
+	/**
+	 * My_App -> my-app: the site name (and, with hyphens as underscores, the database name).
+	 */
+	public static function slug(string $name): string
+	{
+		return str_replace('_', '-', strtolower($name));
+	}
+
+	/**
+	 * Create a new project instance for the given directory in the current directory
 	 */
 	public static function create(string $name, ?string $phpVersion = null, ?string $postgresVersion = null): Project
 	{
+		if ($reason = static::nameError($name)) {
+			throw new \InvalidArgumentException($reason);
+		}
+
 		$project = new Project();
-		$project->name = preg_replace('/[^a-zA-Z0-9-_\.]/', '', $name);
+		$project->name = $name;
+		$project->slug = static::slug($name);
 		$project->path = getcwd() . DIRECTORY_SEPARATOR . $name;
 		$project->phpVersion = $phpVersion ?? PhpFpm::defaultVersion();
 		$project->postgresVersion = $postgresVersion ?? $project->detectPostgresVersion() ?? Postgres::defaultVersion();
+
+		// A site that already serves this directory (e.g. My_App.local.winux.io from an older winux) is kept
+		if (!Site::make($project->getDomain())->exists() && ($existing = static::siteServing($project->path))) {
+			$project->domain = $existing->domain;
+		}
 
 		$project->site = Site::create($project->getDomain(), $project->path);
 
@@ -65,10 +119,18 @@ class Project
 		if ($phpVersion === null && $project->site->exists() && ($sitePhp = $project->site->phpVersion())) {
 			$project->phpVersion = $sitePhp;
 		}
-		$project->dbName = static::databaseName($project->name);
+		$project->dbName = static::databaseName($project->slug);
 		$project->dbUser = $project->dbName;
 
 		return $project;
+	}
+
+	/**
+	 * The site whose web root is exactly this project's public directory.
+	 */
+	protected static function siteServing(string $path): ?Site
+	{
+		return collect(Site::all())->first(fn (Site $site) => $site->projectPath() === $path);
 	}
 
 	/**
@@ -110,9 +172,22 @@ class Project
 			return $this->updateExistingSite();
 		}
 
-		return Certificate::create($this->getDomain(), $this->extraDomains)
-			&& $this->site->generateAndSave($this->phpVersion, $this->extraDomains)
-			&& $this->site->enable();
+		if ($reason = Site::unsafePathReason($this->path)) {
+			error($reason);
+			return false;
+		}
+
+		if (!Certificate::create($this->getDomain(), $this->extraDomains)) {
+			return false;
+		}
+
+		// Written, enabled, and checked with `nginx -t`; removed again (with its certificate) if nginx rejects it
+		if (!$this->site->createAndEnable($this->phpVersion, $this->extraDomains)) {
+			Certificate::destroy($this->getDomain());
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -139,13 +214,70 @@ class Project
 			return false;
 		}
 
-		return $this->site->enable();
+		return $this->site->enableVerified();
 	}
 
-	public function setupDatabase(): bool
+	/**
+	 * Creates the project's database and user. Only import passes $reuse to adopt existing ones.
+	 */
+	public function setupDatabase(bool $reuse = false): bool
 	{
 		$this->dbPassword = Postgres::generatePassword();
-		return $this->postgres()->createAll($this->dbName, $this->dbUser, $this->dbPassword);
+		return $this->postgres()->createAll($this->dbName, $this->dbUser, $this->dbPassword, $reuse || $this->reuseDatabase);
+	}
+
+	/**
+	 * For a new project whose database or user already exists: refuses if another winux project's
+	 * .env uses them (e.g. my_app's, for my-app). Otherwise they were left behind by a deleted
+	 * project with this name, so offers to pick them back up, data and all.
+	 */
+	public function claimExistingDatabase(): bool
+	{
+		$postgres = $this->postgres();
+		if (!($existing = $postgres->existing($this->dbName, $this->dbUser))) {
+			return true;
+		}
+
+		$described = 'the Postgres ' . implode(' and the ', $existing) . " on {$postgres->label()}";
+		if ($user = $this->otherProjectUsing($this->dbName, $this->dbUser)) {
+			error(ucfirst($described) . " already exist and are used by $user.");
+			note('Pick a different project name.');
+			return false;
+		}
+
+		warning(ucfirst($described) . ' already exist, but no other winux project uses them (probably left from an earlier project named this).');
+		if (!confirm('Reuse them? Their data is kept, and the user gets a new password.', true)) {
+			note("Pick a different project name, or drop them first with `winux postgres:delete {$this->dbName} --pg={$postgres->version}`.");
+			return false;
+		}
+
+		return $this->reuseDatabase = true;
+	}
+
+	/**
+	 * The site of another winux project whose .env points at this database or user on the same cluster.
+	 * Only projects with a winux site are visible; anything else using the database isn't.
+	 */
+	public function otherProjectUsing(string $database, string $username): ?string
+	{
+		$port = $this->postgres()->getPort();
+
+		foreach (Site::all() as $site) {
+			$path = $site->projectPath();
+			if (!$path || rtrim($path, '/') === rtrim($this->path, '/')) {
+				continue;
+			}
+
+			$env = static::readEnv($path . DIRECTORY_SEPARATOR . '.env');
+			$local = in_array($env['DB_HOST'] ?? '127.0.0.1', ['127.0.0.1', 'localhost', '::1'], true);
+
+			if (($env['DB_CONNECTION'] ?? null) === 'pgsql' && $local && (int) ($env['DB_PORT'] ?? 5432) === $port
+				&& (($env['DB_DATABASE'] ?? null) === $database || ($env['DB_USERNAME'] ?? null) === $username)) {
+				return "{$site->domain} ($path)";
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -207,6 +339,20 @@ class Project
 			info("Using the existing database '{$this->dbName}' on {$postgres->label()}.");
 		}
 
+		// Never take over the cluster's own database or a superuser (e.g. DB_USERNAME=postgres)
+		if (Postgres::isProtectedDatabase($this->dbName) || $postgres->isProtectedRole($this->dbUser)) {
+			error("The .env uses the built-in database '{$this->dbName}' or the superuser '{$this->dbUser}', which winux won't modify.");
+			note('Fix DB_PASSWORD in .env yourself, or give the app its own database and user: set DB_DATABASE and DB_USERNAME to an app-specific name (or remove them so winux creates ones named after the project), then run the import again.');
+			return false;
+		}
+
+		// The project-named database (e.g. my_app) may belong to another project (e.g. my-app)
+		if ($postgres->existing($this->dbName, $this->dbUser) && ($user = $this->otherProjectUsing($this->dbName, $this->dbUser))) {
+			error("The database '{$this->dbName}' or user '{$this->dbUser}' on {$postgres->label()} is used by $user; winux won't change it for this project.");
+			note('Point DB_DATABASE and DB_USERNAME in .env at a database of its own (or fix DB_PASSWORD if it really is shared), then run the import again.');
+			return false;
+		}
+
 		$userExists = $postgres->userExists($this->dbUser);
 		if ($userExists) {
 			warning("The Postgres user '{$this->dbUser}' exists, but the credentials in .env don't work for it.");
@@ -224,7 +370,7 @@ class Project
 			info("Creating the user '{$this->dbUser}'.");
 		}
 
-		return $this->setupDatabase();
+		return $this->setupDatabase(reuse: true);
 	}
 
 	public function initEnv(): bool
@@ -270,14 +416,17 @@ class Project
 
 	protected function envValue(string $key): ?string
 	{
-		$envFile = $this->path . DIRECTORY_SEPARATOR . '.env';
-		if (!is_file($envFile)) {
-			return null;
+		return static::readEnv($this->path . DIRECTORY_SEPARATOR . '.env')[$key] ?? null;
+	}
+
+	/** @return array<string, string> KEY => unquoted value */
+	public static function readEnv(string $envFile): array
+	{
+		if (!is_file($envFile) || !preg_match_all('/^([A-Z0-9_]+)=(.*)$/m', (string) @file_get_contents($envFile), $matches, PREG_SET_ORDER)) {
+			return [];
 		}
 
-		return preg_match('/^' . preg_quote($key, '/') . '=(.*)$/m', File::get($envFile), $matches)
-			? trim($matches[1], " \t\"'")
-			: null;
+		return collect($matches)->mapWithKeys(fn ($match) => [$match[1] => trim($match[2], " \t\"'")])->all();
 	}
 
 	private function updateEnv(array $newValues, bool $overwrite = true): bool
@@ -391,22 +540,96 @@ class Project
 		return true;
 	}
 
-	public function destroy(): bool
+	/**
+	 * What project:delete would drop from Postgres: the database and user in .env when they're on a
+	 * winux cluster, else the ones named after the project. Only ones that exist are returned, and never
+	 * the built-in databases or a superuser; anything left alone is explained in 'notes'.
+	 *
+	 * @return array{version: ?string, database: ?string, username: ?string, notes: string[]}
+	 */
+	public function databaseToDrop(): array
 	{
-		$this->site->disable();
-		$this->site->delete();
-		Nginx::make()->reload();
+		$plan = ['version' => null, 'database' => null, 'username' => null, 'notes' => []];
+		$database = $this->dbName;
+		$username = $this->dbUser;
+		$version = $this->postgresVersion;
 
-		Certificate::destroy($this->getDomain());
-
-		if (!$this->postgres()->dropAll($this->dbName)) {
-			alert('Failed to drop some (or all) database resources.');
-		} else {
-			info("Dropped all database resources.\n");
+		if ($env = $this->envDatabase()) {
+			$version = collect(Postgres::clusters())->search(fn ($cluster) => $cluster['port'] === $env['port']);
+			if (!in_array($env['host'], ['127.0.0.1', 'localhost', '::1'], true) || $version === false) {
+				$plan['notes'][] = "The database in .env ('{$env['database']}' at {$env['host']}:{$env['port']}) isn't on a winux Postgres cluster; leaving it alone.";
+				return $plan;
+			}
+			$database = $env['database'];
+			$username = $env['username'];
 		}
 
-		alert("Answering 'yes' will delete ALL of this project's files. THIS CAN NOT BE UNDONE!");
-		if (confirm("Do you want to delete the project directory at '{$this->path}'?", false)) {
+		$postgres = Postgres::make((string) $version);
+		if (!$postgres->isInstalled()) {
+			$plan['notes'][] = "{$postgres->label()} isn't installed; no database to drop.";
+			return $plan;
+		}
+		$plan['version'] = $postgres->version;
+
+		if (Postgres::isProtectedDatabase($database)) {
+			$plan['notes'][] = "Keeping the built-in database '$database'.";
+		} elseif ($postgres->databaseExists($database)) {
+			$plan['database'] = $database;
+		}
+
+		if ($postgres->isProtectedRole($username)) {
+			$plan['notes'][] = "Keeping the superuser '$username'.";
+		} elseif ($postgres->userExists($username)) {
+			$plan['username'] = $username;
+		}
+
+		return $plan;
+	}
+
+	/**
+	 * Removes the site (and its hosts entries), the certificate, the given database plan (see databaseToDrop()),
+	 * and optionally the project directory. Keeps going after a failure, but reports it.
+	 *
+	 * @param array{version: ?string, database: ?string, username: ?string} $database
+	 */
+	public function destroy(array $database, bool $deleteDirectory = false): bool
+	{
+		$success = true;
+
+		if ($this->site->exists() || $this->site->isEnabled()) {
+			$extraDomains = $this->site->exists() ? $this->site->extraDomains() : [];
+
+			if ($this->site->disable() && $this->site->delete()) {
+				Hosts::remove(array_filter($extraDomains, fn ($domain) => !Hosts::coveredByWildcard($domain) && !str_starts_with($domain, '*.')));
+			} else {
+				$success = false;
+			}
+
+			if (!Nginx::make()->reload()) {
+				warning('nginx failed to reload; run `winux nginx:restart` once the problem is fixed.');
+				$success = false;
+			}
+		}
+
+		$success = Certificate::destroy($this->getDomain()) && $success;
+
+		if ($database['version'] && ($database['database'] || $database['username'])) {
+			$postgres = Postgres::make($database['version']);
+			$dropped = (!$database['database'] || $postgres->dropDatabase($database['database']))
+				&& (!$database['username'] || $postgres->dropUser($database['username']));
+
+			if ($dropped) {
+				info('Dropped ' . implode(' and ', array_filter([
+					$database['database'] ? "the database '{$database['database']}'" : null,
+					$database['username'] ? "the user '{$database['username']}'" : null,
+				])) . " from {$postgres->label()}.");
+			} else {
+				alert('Failed to drop some (or all) database resources.');
+				$success = false;
+			}
+		}
+
+		if ($deleteDirectory && is_dir($this->path)) {
 			if (!File::deleteDirectory($this->path)) {
 				error('Failed to delete the project directory.');
 				return false;
@@ -415,7 +638,7 @@ class Project
 			info('Deleted the project directory.');
 		}
 
-		return true;
+		return $success;
 	}
 	#endregion
 
