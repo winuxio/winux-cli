@@ -6,10 +6,12 @@ use Illuminate\Console\Events\CommandFinished;
 use Illuminate\Support\Facades\Process;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
+use Symfony\Component\Console\Output\ConsoleOutputInterface;
+use Symfony\Component\Console\Output\ConsoleSectionOutput;
 use Symfony\Component\Console\Output\OutputInterface;
 
 beforeEach(function () {
-	$this->ci = getenv('CI');
+	$this->env = ['CI' => getenv('CI'), 'WINUX_NO_UPDATE_CHECK' => getenv('WINUX_NO_UPDATE_CHECK')];
 	putenv('CI');
 	putenv('WINUX_NO_UPDATE_CHECK');
 
@@ -19,8 +21,10 @@ beforeEach(function () {
 });
 
 afterEach(function () {
-	if ($this->ci !== false) {
-		putenv("CI={$this->ci}");
+	foreach ($this->env as $name => $value) {
+		if ($value !== false) {
+			putenv("$name=$value");
+		}
 	}
 });
 
@@ -66,4 +70,52 @@ it('never checks when running from source', function () {
 
 	finishCommand();
 	Process::assertNothingRan();
+});
+
+it('writes the notice to stderr, keeping stdout clean for pipes', function () {
+	UpdateCheck::store(['checked_at' => time(), 'latest' => '1.1.0']);
+
+	$output = new class(OutputInterface::VERBOSITY_NORMAL, true) extends BufferedOutput implements ConsoleOutputInterface {
+		public OutputInterface $stderr;
+
+		public function __construct(int $verbosity, bool $decorated)
+		{
+			parent::__construct($verbosity, $decorated);
+			$this->stderr = new BufferedOutput($verbosity, $decorated);
+		}
+
+		public function getErrorOutput(): OutputInterface
+		{
+			return $this->stderr;
+		}
+
+		public function setErrorOutput(OutputInterface $error): void
+		{
+			$this->stderr = $error;
+		}
+
+		public function section(): ConsoleSectionOutput
+		{
+			throw new LogicException('Not used');
+		}
+	};
+
+	UpdateCheck::afterCommand(new CommandFinished('site:list', new ArrayInput([]), $output, 0));
+
+	expect($output->fetch())->toBe('')
+		->and($output->getErrorOutput()->fetch())->toContain('winux 1.1.0 is available');
+});
+
+it('stores the cache atomically, merging with what is there', function () {
+	UpdateCheck::store(['checked_at' => 100, 'latest' => '1.1.0']);
+	clearstatcache();
+	$inode = fileinode(UpdateCheck::path());
+
+	UpdateCheck::store(['checked_at' => 200]);
+	clearstatcache();
+
+	// A new file renamed into place, rather than the old one rewritten where readers could catch it half-written
+	expect(fileinode(UpdateCheck::path()))->not->toBe($inode)
+		->and(UpdateCheck::cached())->toBe(['checked_at' => 200, 'latest' => '1.1.0'])
+		->and(glob(dirname(UpdateCheck::path()) . '/update-check.*'))->toBe([UpdateCheck::path()]);
 });
