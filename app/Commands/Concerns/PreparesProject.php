@@ -4,6 +4,7 @@ namespace App\Commands\Concerns;
 
 use App\Classes\Hosts;
 use App\Classes\Project;
+use App\Services\Nginx;
 use App\Services\PhpFpm;
 use App\Services\Postgres;
 use Illuminate\Support\Facades\Process;
@@ -19,6 +20,11 @@ trait PreparesProject
 
 	protected function prepareProject(string $name): ?Project
 	{
+		if ($reason = Project::validationError($name)) {
+			error($reason);
+			return null;
+		}
+
 		$project = Project::create($name, $this->option('php'), $this->option('pg'));
 
 		if (!PhpFpm::isValidVersion($project->phpVersion)) {
@@ -50,6 +56,19 @@ trait PreparesProject
 		$project->extraDomains = $domains;
 
 		return $project;
+	}
+
+	/**
+	 * Reloads nginx so the new site is served. Reports the failure rather than claiming it's live.
+	 */
+	protected function reloadNginx(): bool
+	{
+		if (Nginx::make()->reload()) {
+			return true;
+		}
+
+		error('nginx failed to reload, so the site is not live yet. Check `sudo nginx -t`, then run `winux nginx:restart`.');
+		return false;
 	}
 
 	protected function reportExtraDomains(Project $project): void

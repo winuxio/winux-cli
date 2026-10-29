@@ -7,7 +7,7 @@ use App\Classes\Winux;
 use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
-use function Laravel\Prompts\{alert, info};
+use function Laravel\Prompts\{alert, error, info};
 
 class CreateNginxSite extends Command
 {
@@ -21,6 +21,11 @@ class CreateNginxSite extends Command
 	{
 		Winux::SetupEnvironment();
 
+		if ($reason = Project::validationError($this->argument('projectName'))) {
+			error($reason);
+			return self::FAILURE;
+		}
+
 		$project = Project::create($this->argument('projectName'), $this->option('php'));
 
 		if (!$project->setupNginx()) {
@@ -28,7 +33,10 @@ class CreateNginxSite extends Command
 			return self::FAILURE;
 		}
 
-		Nginx::make()->reload();
+		if (!Nginx::make()->reload()) {
+			error('nginx failed to reload, so the site is not live yet. Check `sudo nginx -t`, then run `winux nginx:restart`.');
+			return self::FAILURE;
+		}
 
 		info("{$project->name} is live at https://{$project->getDomain()} (PHP {$project->phpVersion})");
 		return self::SUCCESS;

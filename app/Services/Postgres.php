@@ -7,7 +7,7 @@ use App\Classes\Settings;
 use Illuminate\Support\Facades\Process;
 use Illuminate\Support\Str;
 
-use function Laravel\Prompts\warning;
+use function Laravel\Prompts\{error, warning};
 
 class Postgres extends Service
 {
@@ -141,10 +141,24 @@ class Postgres extends Service
 		static::$clusters = null;
 	}
 
-	public function createAll(string $dbName, ?string $username = null, ?string $password = null): bool
+	/**
+	 * Creates a database and a user that owns it. An existing database or user is only adopted
+	 * (and the user's password reset) with $reuse, which only `project:import` asks for.
+	 */
+	public function createAll(string $dbName, ?string $username = null, ?string $password = null, bool $reuse = false): bool
 	{
 		$username ??= $dbName;
 		$password ??= self::generatePassword();
+
+		if (!$reuse && ($existing = $this->existing($dbName, $username))) {
+			error('The ' . implode(' and the ', $existing) . " already exist on {$this->label()}; refusing to reuse them.");
+			return false;
+		}
+
+		if (static::isProtectedDatabase($dbName) || $this->isProtectedRole($username)) {
+			error("Refusing to use the built-in database '$dbName' or the superuser '$username'.");
+			return false;
+		}
 
 		if (!$this->databaseExists($dbName) && !$this->createDatabase($dbName)) {
 			return false;
@@ -158,11 +172,60 @@ class Postgres extends Service
 		return $userReady && $this->grant($dbName, $username);
 	}
 
+	/**
+	 * Which of the given database and user already exist, e.g. ["database 'my_app'", "user 'my_app'"].
+	 *
+	 * @return string[]
+	 */
+	public function existing(string $dbName, ?string $username = null): array
+	{
+		$username ??= $dbName;
+
+		return array_values(array_filter([
+			$this->databaseExists($dbName) ? "database '$dbName'" : null,
+			$this->userExists($username) ? "user '$username'" : null,
+		]));
+	}
+
+	/**
+	 * Drops a database and its user. The built-in databases and superuser roles are never dropped.
+	 */
 	public function dropAll(string $dbName, ?string $username = null): bool
 	{
 		$username ??= $dbName;
-		$success = $this->dropDatabase($dbName);
+		$success = true;
+
+		if (static::isProtectedDatabase($dbName)) {
+			warning("Skipping the built-in database '$dbName'.");
+		} else {
+			$success = $this->dropDatabase($dbName);
+		}
+
+		if ($this->isProtectedRole($username)) {
+			warning("Skipping the superuser '$username'.");
+			return $success;
+		}
+
 		return $this->dropUser($username) && $success;
+	}
+
+	/** postgres and the template databases belong to the cluster, never to a project. */
+	public static function isProtectedDatabase(string $databaseName): bool
+	{
+		return $databaseName === 'postgres' || str_starts_with($databaseName, 'template');
+	}
+
+	/** The postgres role and any other superuser. */
+	public function isProtectedRole(string $username): bool
+	{
+		return $username === 'postgres'
+			|| $this->scalar('SELECT 1 FROM pg_roles WHERE rolsuper AND rolname = ' . static::literal($username)) === '1';
+	}
+
+	public function databaseOwner(string $databaseName): ?string
+	{
+		$owner = $this->scalar('SELECT pg_get_userbyid(datdba) FROM pg_database WHERE datname = ' . static::literal($databaseName));
+		return $owner === '' ? null : $owner;
 	}
 
 	public static function generatePassword(): string
@@ -205,6 +268,17 @@ class Postgres extends Service
 		$db = static::identifier($databaseName);
 		$user = static::identifier($username);
 
+		// A database another role already owns (e.g. an imported one) keeps its owner; the user just gets access
+		$owner = $this->databaseOwner($databaseName);
+		if ($owner !== null && $owner !== 'postgres' && $owner !== $username) {
+			warning("'$databaseName' is owned by '$owner'; granting '$username' access instead of taking ownership.");
+
+			return $this->query("GRANT ALL PRIVILEGES ON DATABASE $db TO $user")
+				&& $this->query("GRANT ALL ON SCHEMA public TO $user", $databaseName)
+				&& $this->query("GRANT ALL ON ALL TABLES IN SCHEMA public TO $user", $databaseName)
+				&& $this->query("GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO $user", $databaseName);
+		}
+
 		// Owning the database (and its public schema) covers Postgres 15+'s tightened defaults
 		// Existing tables (e.g. an imported database) may be owned by another role
 		return $this->query("ALTER DATABASE $db OWNER TO $user")
@@ -240,6 +314,10 @@ class Postgres extends Service
 		return "'" . str_replace("'", "''", $value) . "'";
 	}
 
+	/**
+	 * psql as the postgres superuser. SQL is always sent on stdin (`-f -`), never as an argument,
+	 * so passwords in it don't show up in `ps` or in sudo's log.
+	 */
 	protected function psql(array $args, string $database = 'postgres'): array
 	{
 		return [
@@ -248,17 +326,18 @@ class Postgres extends Service
 			'-d', $database,
 			'-v', 'ON_ERROR_STOP=1',
 			...$args,
+			'-f', '-',
 		];
 	}
 
 	protected function scalar(string $query): string
 	{
-		return trim(Process::path('/')->run($this->psql(['-tAc', $query]))->output());
+		return trim(Process::path('/')->input($query)->run($this->psql(['-tA']))->output());
 	}
 
 	protected function query(string $query, string $database = 'postgres'): bool
 	{
-		$process = Process::path('/')->run($this->psql(['-c', $query], $database));
+		$process = Process::path('/')->input($query)->run($this->psql([], $database));
 
 		if ($process->failed()) {
 			warning($process->errorOutput());

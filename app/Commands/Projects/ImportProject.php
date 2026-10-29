@@ -5,7 +5,6 @@ namespace App\Commands\Projects;
 use App\Classes\Winux;
 use App\Commands\Concerns\PreparesProject;
 use App\Enums\Editors;
-use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\{alert, confirm, error, info, select};
@@ -45,7 +44,9 @@ class ImportProject extends Command
 			return self::FAILURE;
 		}
 
-		Nginx::make()->reload();
+		if (!$this->reloadNginx()) {
+			return self::FAILURE;
+		}
 
 		if (!$project->setupImportedDatabase()) {
 			alert('Failed to create all required postgres resources.');

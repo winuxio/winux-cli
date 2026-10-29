@@ -7,7 +7,6 @@ use App\Classes\Winux;
 use App\Commands\Concerns\PreparesProject;
 use App\Enums\Editors;
 use App\Enums\GitHubVisibility;
-use App\Services\Nginx;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\{alert, confirm, info, select};
@@ -50,6 +49,11 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
+		// A new project never adopts an existing database or user (e.g. my_app's, for my-app)
+		if (!$project->ensureDatabaseIsFree()) {
+			return Command::FAILURE;
+		}
+
 		info("Creating project '{$project->name}' at '{$project->path}' (PHP {$project->phpVersion}, Postgres {$project->postgresVersion})");
 
 		// Lets create the project now
@@ -66,7 +70,9 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
-		Nginx::make()->reload();
+		if (!$this->reloadNginx()) {
+			return Command::FAILURE;
+		}
 
 		if (!$project->setupDatabase()) {
 			alert('Failed to create all required postgres resources.');
