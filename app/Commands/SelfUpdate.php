@@ -5,6 +5,7 @@ namespace App\Commands;
 use App\Classes\Releases;
 use App\Classes\Settings;
 use App\Classes\UpdateCheck;
+use Illuminate\Contracts\Process\ProcessResult;
 use Illuminate\Support\Facades\Process;
 use LaravelZero\Framework\Commands\Command;
 use Throwable;
@@ -49,7 +50,7 @@ class SelfUpdate extends Command
 		try {
 			$releases = spin(fn () => Releases::all(), 'Checking for updates...');
 		} catch (Throwable $e) {
-			error("Couldn't fetch winux releases from GitHub: {$e->getMessage()}");
+			error("Couldn't fetch winux releases from GitHub. " . Releases::describe($e));
 			return self::FAILURE;
 		}
 
@@ -90,7 +91,7 @@ class SelfUpdate extends Command
 		try {
 			[$download, $verified] = spin(fn () => Releases::download($release), "Downloading winux {$release['version']}...");
 		} catch (Throwable $e) {
-			error("Download failed: {$e->getMessage()}");
+			error('Download failed. ' . Releases::describe($e));
 			return self::FAILURE;
 		}
 
@@ -104,13 +105,15 @@ class SelfUpdate extends Command
 			return self::FAILURE;
 		}
 
-		if (!@copy($binary, Releases::previousBinary())) {
+		// Kept aside until the new binary is in place, so a failed update leaves winux.previous alone
+		$backup = $this->stash($binary);
+		if ($backup === null) {
 			warning("Couldn't keep a copy of the current version, so --rollback won't be available.");
 		}
 
-		UpdateCheck::store(['latest' => null]);
-
-		return $this->replace($binary, $download, "Updated winux to {$release['version']}.");
+		return $this->install($binary, $download, $backup, "Updated winux to {$release['version']}.", function () {
+			UpdateCheck::store(['latest' => null]);
+		});
 	}
 
 	protected function rollback(string $binary): int
@@ -127,32 +130,87 @@ class SelfUpdate extends Command
 			return self::FAILURE;
 		}
 
-		// Swap, so a second --rollback undoes the first
+		// Swap, so a second --rollback undoes the first. winux.previous is only overwritten once
+		// the binary has been replaced, so a failed rollback leaves both versions as they were.
 		$restore = tempnam(sys_get_temp_dir(), 'winux-');
-		copy($previous, $restore);
+		if ($restore === false || !@copy($previous, $restore)) {
+			if ($restore !== false) {
+				@unlink($restore);
+			}
+			error("Couldn't copy $previous to " . sys_get_temp_dir() . '; nothing was changed.');
+			return self::FAILURE;
+		}
 		chmod($restore, 0755);
-		copy($binary, $previous);
 
-		UpdateCheck::store(['checked_at' => 0]);
+		$backup = $this->stash($binary);
+		if ($backup === null) {
+			warning("Couldn't keep a copy of the current version, so this rollback can't be undone.");
+		}
 
-		return $this->replace($binary, $restore, "Rolled back to winux $version.");
+		return $this->install($binary, $restore, $backup, "Rolled back to winux $version.", function () {
+			UpdateCheck::store(['checked_at' => 0]);
+		});
 	}
 
 	/**
-	 * Replaces the running PHAR and exits straight away: once the file changes,
+	 * Copies the binary next to winux.previous, to take its place once the update succeeds.
+	 */
+	protected function stash(string $binary): ?string
+	{
+		$directory = dirname(Releases::previousBinary());
+		if (!is_dir($directory) && !@mkdir($directory, 0755, true)) {
+			return null;
+		}
+
+		$path = @tempnam($directory, 'winux.previous.');
+		if ($path === false) {
+			return null;
+		}
+
+		if (!@copy($binary, $path)) {
+			@unlink($path);
+			return null;
+		}
+
+		return $path;
+	}
+
+	/**
+	 * Replaces the binary with $new, then makes $backup the rollback copy. If the replace fails,
+	 * the binary and winux.previous are left as they were. Temp files are removed either way.
+	 * On success, exits straight away when the running PHAR was replaced: once the file changes,
 	 * this process can't load anything else from it.
 	 */
-	protected function replace(string $binary, string $new, string $message): int
+	protected function install(string $binary, string $new, ?string $backup, string $message, ?callable $after = null): int
 	{
-		$result = is_writable($binary) && is_writable(dirname($binary))
-			? Process::run(['mv', $new, $binary])
-			: Process::run(['sudo', 'install', '-m', '0755', $new, $binary]);
+		try {
+			try {
+				$result = $this->replace($binary, $new);
+				$failure = $result->failed() ? (trim($result->errorOutput()) ?: "exit code {$result->exitCode()}") : null;
+			} catch (Throwable $e) {
+				$failure = $e->getMessage();
+			}
 
-		@unlink($new);
+			if ($failure !== null) {
+				error("Couldn't replace $binary: $failure");
+				note('Nothing was changed.');
+				return self::FAILURE;
+			}
 
-		if ($result->failed()) {
-			error("Couldn't replace $binary: " . trim($result->errorOutput()));
-			return self::FAILURE;
+			if ($backup !== null && !@rename($backup, Releases::previousBinary())) {
+				warning("Couldn't save the old version as " . Releases::previousBinary() . ", so --rollback won't be available.");
+			}
+
+			if ($after !== null) {
+				$after();
+			}
+		} finally {
+			// mv consumes $new on success; sudo install copies it
+			foreach (array_filter([$new, $backup]) as $path) {
+				if (is_file($path)) {
+					@unlink($path);
+				}
+			}
 		}
 
 		info($message);
@@ -162,6 +220,19 @@ class SelfUpdate extends Command
 		}
 
 		exit(self::SUCCESS);
+	}
+
+	/**
+	 * Moves $new over the binary, with sudo when the binary isn't writable. No timeout, since
+	 * sudo can sit at its password prompt for as long as the user takes.
+	 */
+	protected function replace(string $binary, string $new): ProcessResult
+	{
+		$command = is_writable($binary) && is_writable(dirname($binary))
+			? ['mv', $new, $binary]
+			: ['sudo', 'install', '-m', '0755', $new, $binary];
+
+		return Process::forever()->run($command);
 	}
 
 	protected function runs(string $path, string $version): bool
