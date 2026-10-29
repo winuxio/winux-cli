@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.4](https://github.com/winuxio/winux-cli/compare/v0.3.3...v0.3.4) (2026-10-29)
+
+
+### Features
+
+* create, import and delete projects without a password ([#25](https://github.com/winuxio/winux-cli/issues/25)) ([86c03ea](https://github.com/winuxio/winux-cli/commit/86c03eaee851dbd38daa08a934bc1a526145cc3d))
+* offer Boost and 14 more packages in project:create ([#23](https://github.com/winuxio/winux-cli/issues/23)) ([dfc67bc](https://github.com/winuxio/winux-cli/commit/dfc67bc362bec9b3d4ddd242864d977183f62839))
+
 ## [0.3.3](https://github.com/winuxio/winux-cli/compare/v0.3.2...v0.3.3) (2026-10-29)
 
 
