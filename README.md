@@ -162,7 +162,7 @@ The packages, each the newest version compatible with the app (`--package=<name>
 | `s3` | The S3 filesystem driver |
 | `activitylog` | spatie/laravel-activitylog, with its migration |
 
-Each package is committed separately when the project has a repository, and migrations the packages add are run afterwards.
+Each package is committed separately when the project has a repository, and migrations the packages add are run afterwards. The wiring each one needs (traits on the User model, guards, panel plugins, themes) is added for you; when a file isn't in the shape winux expects, it's left alone and you get the instructions instead.
 
 `project:create` accepts a name (created in the current directory), a path, or `.`, and asks for a name when you leave it out. The directory can already have files, say a README, some docs, and a `.git`. In that case, Laravel is installed beside it first and then moved in around your files, and nothing of yours is overwritten. Your `README.md`, `AGENTS.md`, `CLAUDE.md`, `.gitattributes` and `.editorconfig` are kept, and `.gitignore` gains Laravel's missing rules. If anything else clashes (say your own `public/`), it stops before changing anything. An existing repository gets the app as a new commit rather than a `git init`, and one that already has a remote skips creating a GitHub repository. Typing the name of the directory you're in asks whether you meant that directory, and a directory that's already a Laravel app is pointed at `project:import`. winux remembers what it added, so deleting the project's files later (`project:delete` with `--delete-files`) takes out only the app and puts `.gitignore` back, leaving your docs and README; anything you added afterwards is left and listed.
 
