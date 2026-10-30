@@ -4,19 +4,23 @@ namespace App\Commands\Projects;
 
 use App\Classes\Certificate;
 use App\Classes\Project;
+use App\Classes\Scaffold;
+use App\Commands\Concerns\PreparesProject;
 use LaravelZero\Framework\Commands\Command;
 
 use function Laravel\Prompts\{alert, error, info, confirm, note, text, warning};
 
 class DeleteProject extends Command
 {
+	use PreparesProject;
+
 	/**
 	 * The signature of the command.
 	 *
 	 * @var string
 	 */
 	protected $signature = 'project:delete
-		{projectName : The project directory (in the current directory) whose site and certificate are deleted}
+		{projectName : The project whose site and certificate are deleted: a name (in the current directory), a path, or . for the current directory}
 		{--force : Skip the confirmations}
 		{--delete-database : Also drop the project\'s database and Postgres user (otherwise you are asked, and they are kept by default)}
 		{--delete-files : Also delete the project directory (otherwise you are asked, and it is kept by default)}';
@@ -33,14 +37,18 @@ class DeleteProject extends Command
 	 */
 	public function handle(): int
 	{
-		$projectName = $this->argument('projectName');
+		$target = $this->resolveTarget($this->argument('projectName'), mustExist: false);
+		if (!$target) {
+			return self::FAILURE;
+		}
+		[$projectName, $directory] = $target;
 
 		if ($reason = Project::nameError($projectName)) {
 			error($reason);
 			return self::FAILURE;
 		}
 
-		$project = Project::create($projectName);
+		$project = Project::create($projectName, directory: $directory);
 		$hasDirectory = is_dir($project->path);
 		$hasSite = $project->site->exists() || $project->site->isEnabled();
 		$hasCertificate = is_dir(Certificate::path($project->getDomain()));
@@ -74,9 +82,15 @@ class DeleteProject extends Command
 			$this->line("  - $item");
 		}
 
+		// Created around existing files: only the app's files go, never the directory
+		$scaffold = $hasDirectory ? Scaffold::recorded($project->path) : null;
+		$filesItem = $scaffold
+			? "the Laravel app's files in {$project->path} (keeping " . implode(', ', array_slice(array_diff($scaffold['existing'], ['.git']), 0, 5) ?: ['the rest']) . ')'
+			: "the project directory {$project->path}";
+
 		$optional = array_filter([
 			...$databaseItems,
-			$hasDirectory ? "the project directory {$project->path}" : null,
+			$hasDirectory ? $filesItem : null,
 		]);
 		if ($optional) {
 			$this->line('  and, only if you choose to (or pass --delete-database / --delete-files):');
@@ -122,7 +136,9 @@ class DeleteProject extends Command
 		$deleteFiles = false;
 		if ($hasDirectory) {
 			$deleteFiles = $this->option('delete-files');
-			if (!$deleteFiles && $this->input->isInteractive()) {
+			if (!$deleteFiles && $this->input->isInteractive() && $scaffold) {
+				$deleteFiles = confirm("Delete the Laravel app's files too? Yours stay.", false, hint: "Deletes $filesItem.");
+			} elseif (!$deleteFiles && $this->input->isInteractive()) {
 				alert("Answering 'yes' will delete ALL of this project's files. THIS CAN NOT BE UNDONE!");
 				$deleteFiles = confirm("Do you want to delete the project directory at '{$project->path}'?", false);
 			}

@@ -53,7 +53,14 @@ class CreateProject extends Command
 				error('Pass a project name, or . to create the project in the current directory.');
 				return Command::FAILURE;
 			}
-			$projectName = text('Project name', placeholder: 'my-app', required: true, validate: fn ($name) => Project::nameError($name), hint: 'Created in the current directory');
+			$projectName = text('Project name', placeholder: 'my-app', required: true, validate: fn ($name) => Project::nameError($name), hint: 'Creates ' . getcwd() . '/<name>; enter . to use this directory');
+		}
+
+		// Inside ~/sites/blog (with its README), `project:create blog` almost always means here, not ~/sites/blog/blog
+		$cwd = getcwd();
+		if ($projectName === basename($cwd) && $this->input->isInteractive() && Scaffold::entries($cwd)
+			&& confirm("You're already in $projectName. Create the project in this directory?", true, hint: "No creates $cwd/$projectName instead.")) {
+			$projectName = '.';
 		}
 
 		$target = $this->resolveTarget($projectName, mustExist: false);
@@ -84,11 +91,19 @@ class CreateProject extends Command
 			return Command::FAILURE;
 		}
 
+		if (is_file("{$project->path}/artisan") && is_file("{$project->path}/composer.json")) {
+			error("{$project->path} is already a Laravel app.");
+			note("Set it up with `winux project:import {$project->path}` instead.");
+			return Command::FAILURE;
+		}
+
 		// A directory with a README, docs, or a .git gets the app added around them
 		if ($existing = Scaffold::entries($project->path)) {
 			$shown = array_slice($existing, 0, 5);
 			$list = implode(', ', $shown) . (count($existing) > count($shown) ? ', …' : '');
-			if ($this->input->isInteractive() && !confirm("{$project->path} already has " . count($existing) . " item(s) ($list). Add a Laravel app alongside them?", true)) {
+			// The question stays short: prompts cut off a long one at the terminal's width
+			if ($this->input->isInteractive() && !confirm('Add a Laravel app to this directory?', true, hint: "{$project->path} already has $list")) {
+				note('Cancelled. Nothing was created.');
 				return Command::FAILURE;
 			}
 			note("Adding the app around what's already in {$project->path}; existing files are never overwritten.");

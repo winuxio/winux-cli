@@ -18,13 +18,14 @@ use Symfony\Component\Console\Output\BufferedOutput;
  * Fakes every process. $state:
  *  - peer: whether dev can already connect as its own superuser role
  *  - roles: other roles on the cluster
- *  - passwordless: commands (as run after sudo) that `sudo -n -k -l` allows, or true for all
+ *  - passwordless: commands (as run after sudo) with a NOPASSWD rule, or true for all
+ *  - sudoRules: the other lines `sudo -n -l` lists (when any is NOPASSWD, listing needs no password)
  *  - visudo: whether visudo accepts the file
  *  - owner: who owns every database
  */
 function fakePasswordlessProcesses(array $state = []): void
 {
-	$state += ['peer' => false, 'roles' => [], 'passwordless' => [], 'visudo' => true, 'owner' => ''];
+	$state += ['peer' => false, 'roles' => [], 'passwordless' => [], 'sudoRules' => [], 'visudo' => true, 'owner' => ''];
 
 	Process::fake(function (PendingProcess $process) use (&$state) {
 		$command = (array) $process->command;
@@ -52,9 +53,18 @@ function fakePasswordlessProcesses(array $state = []): void
 			return Process::result(in_array($m[1], $state['roles'], true) ? '1' : '');
 		}
 
-		if (array_slice($command, 0, 4) === ['sudo', '-n', '-k', '-l']) {
-			$allowed = $state['passwordless'] === true || in_array(implode(' ', array_slice($command, 4)), $state['passwordless'], true);
-			return Process::result(exitCode: $allowed ? 0 : 1);
+		if ($command === ['sudo', '-n', '-l']) {
+			$rules = $state['sudoRules'];
+			if ($state['passwordless'] === true) {
+				$rules[] = '(ALL) NOPASSWD: ALL';
+			} elseif ($state['passwordless']) {
+				$sbin = config('winux.sudo_secure_path')[0];
+				$rules[] = '(root) NOPASSWD: ' . implode(', ', array_map(fn ($c) => "$sbin/$c", $state['passwordless']));
+			}
+			if (!array_filter($rules, fn ($rule) => str_contains($rule, 'NOPASSWD'))) {
+				return Process::result(errorOutput: 'sudo: a password is required', exitCode: 1);
+			}
+			return Process::result("User dev may run the following commands on box:\n    " . implode("\n    ", $rules) . "\n");
 		}
 
 		if (array_slice($command, 0, 2) === ['sudo', 'visudo']) {
@@ -179,6 +189,19 @@ it('lists the commands that still need a password', function () {
 	]);
 });
 
+it("isn't fooled by sudo rules that allow everything with a password", function () {
+	fakePasswordlessProcesses(['sudoRules' => ['(ALL : ALL) ALL', '(postgres) NOPASSWD: /usr/local/bin/pg-create-db']]);
+
+	expect(Sudoers::missing())->toHaveCount(8)
+		->and(Sudoers::isInstalled())->toBeFalse();
+});
+
+it('reads tags the way sudo applies them, to the commands after them', function () {
+	fakePasswordlessProcesses(['sudoRules' => ["(root) PASSWD: {$this->root}/sbin/nginx -t, NOPASSWD: {$this->root}/sbin/systemctl"]]);
+
+	expect(Sudoers::missing())->toBe(['nginx -t', 'php-fpm8.4 -t']);
+});
+
 it('remembers turning the rules off, and doctor stops suggesting them', function () {
 	fakePasswordlessProcesses(['peer' => true]);
 
@@ -187,7 +210,7 @@ it('remembers turning the rules off, and doctor stops suggesting them', function
 
 	Artisan::call('doctor');
 	expect(Artisan::output())->toContain('turned off');
-	Process::assertNotRan(fn ($process) => array_slice((array) $process->command, 0, 4) === ['sudo', '-n', '-k', '-l']);
+	Process::assertNotRan(fn ($process) => (array) $process->command === ['sudo', '-n', '-l']);
 
 	Artisan::call('sudoers');
 	expect(Sudoers::declined())->toBeFalse();
