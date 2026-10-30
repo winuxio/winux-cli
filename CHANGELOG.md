@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.6](https://github.com/winuxio/winux-cli/compare/v0.3.5...v0.3.6) (2026-10-30)
+
+
+### Bug Fixes
+
+* accept . and paths at the project name prompt ([#28](https://github.com/winuxio/winux-cli/issues/28)) ([6ac88b0](https://github.com/winuxio/winux-cli/commit/6ac88b0fe0c1075e330de13eb5b0548539c3734d))
+
 ## [0.3.5](https://github.com/winuxio/winux-cli/compare/v0.3.4...v0.3.5) (2026-10-30)
 
 
