@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.3.7](https://github.com/winuxio/winux-cli/compare/v0.3.6...v0.3.7) (2026-10-30)
+
+
+### Features
+
+* wire Passport, Sanctum, Reverb and Socialment into the app ([#30](https://github.com/winuxio/winux-cli/issues/30)) ([ddc7904](https://github.com/winuxio/winux-cli/commit/ddc7904823130873b28b6df4593da803b13a59eb))
+
+
+### Documentation
+
+* say what happens when package wiring can't edit a file ([#32](https://github.com/winuxio/winux-cli/issues/32)) ([ede6fe6](https://github.com/winuxio/winux-cli/commit/ede6fe6f2f373e2c9d05a953715cc544831cd98c))
+
 ## [0.3.6](https://github.com/winuxio/winux-cli/compare/v0.3.5...v0.3.6) (2026-10-30)
 
 
