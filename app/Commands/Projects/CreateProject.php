@@ -83,6 +83,10 @@ class CreateProject extends Command
 			}
 			$packages[$package->value] = $package;
 		}
+		if ($reason = Packages::conflictError(array_values($packages))) {
+			error($reason);
+			return Command::FAILURE;
+		}
 
 		Winux::SetupEnvironment();
 
@@ -185,6 +189,7 @@ class CreateProject extends Command
 				collect(Packages::cases())->mapWithKeys(fn ($package) => [$package->value => "{$package->label()} ({$package->description()})"])->all(),
 				scroll: 16,
 				hint: 'Press space to select, enter to continue',
+				validate: fn (array $values) => Packages::conflictError(array_map(fn ($value) => Packages::from($value), $values)),
 			);
 			$packages = array_map(fn ($value) => Packages::from($value), $chosen);
 		}

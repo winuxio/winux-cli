@@ -73,15 +73,109 @@ it('lets the Laravel installers require Sanctum, Passport and Reverb themselves'
 })->with([
 	'sanctum' => [Packages::Sanctum, ['install:api', '--composer=/usr/local/bin/composer', '--without-migration-prompt']],
 	'passport' => [Packages::Passport, ['install:api', '--passport', '--composer=/usr/local/bin/composer', '--without-migration-prompt']],
-	'reverb' => [Packages::Reverb, ['install:broadcasting', '--reverb', '--composer=/usr/local/bin/composer']],
 ]);
 
-it('skips the node dependencies for Reverb without npm, and says what to add', function () {
-	fakePackageProcesses(npm: false);
+it('installs Reverb without its own npm step, then adds the Echo packages itself', function (bool $npm) {
+	fakePackageProcesses(npm: $npm);
 
-	Packages::Reverb->install($this->project, 'php8.4');
+	expect(Packages::Reverb->install($this->project, 'php8.4'))->toBeTrue();
 
-	expect(packageCommands()[0])->toContain('--without-node');
+	$expected = [['php8.4', 'artisan', 'install:broadcasting', '--reverb', '--composer=/usr/local/bin/composer', '--without-node', '--no-interaction']];
+	if ($npm) {
+		$expected[] = ['npm', 'install', '--save-dev', 'laravel-echo', 'pusher-js'];
+	}
+	expect(packageCommands())->toBe($expected);
+})->with(['npm' => true, 'no npm' => false]);
+
+it('says when a package made Composer downgrade Guzzle', function () {
+	$lock = fn (string $version) => File::put("{$this->project}/composer.lock", json_encode(['packages' => [['name' => 'guzzlehttp/guzzle', 'version' => $version]]]));
+	$lock('8.3.1');
+	Process::fake(function (PendingProcess $process) use ($lock) {
+		if (in_array('install:broadcasting', (array) $process->command, true)) {
+			$lock('7.16.1');
+		}
+		return Process::result();
+	});
+
+	$output = captureOutput(fn () => Packages::Reverb->install($this->project, 'php8.4'));
+
+	expect($output)->toContain('guzzlehttp/guzzle from 8.3.1 to 7.16.1');
+});
+
+it('wires Passport into the User model and config/auth.php, once', function () {
+	fakePackageProcesses();
+	File::ensureDirectoryExists("{$this->project}/app/Models");
+	File::ensureDirectoryExists("{$this->project}/config");
+	File::copy(base_path('tests/Fixtures/laravel/User.php'), "{$this->project}/app/Models/User.php");
+	File::copy(base_path('tests/Fixtures/laravel/auth.php'), "{$this->project}/config/auth.php");
+
+	Packages::Passport->install($this->project, 'php8.4');
+	Packages::Passport->install($this->project, 'php8.4');
+
+	$user = File::get("{$this->project}/app/Models/User.php");
+	expect($user)->toContain("use Laravel\\Passport\\HasApiTokens;\nuse Laravel\\Passport\\Contracts\\OAuthenticatable;\n")
+		->toContain('class User extends Authenticatable implements OAuthenticatable')
+		->toContain('    use HasApiTokens, HasFactory, Notifiable;')
+		->and(substr_count($user, 'HasApiTokens'))->toBe(2);
+
+	$auth = require "{$this->project}/config/auth.php";
+	expect($auth['guards'])->toBe([
+		'web' => ['driver' => 'session', 'provider' => 'users'],
+		'api' => ['driver' => 'passport', 'provider' => 'users'],
+	]);
+});
+
+it('adds to an implements list the User model already has', function () {
+	fakePackageProcesses();
+	File::ensureDirectoryExists("{$this->project}/app/Models");
+	File::put("{$this->project}/app/Models/User.php", str_replace('class User extends Authenticatable', 'class User extends Authenticatable implements MustVerifyEmail', File::get(base_path('tests/Fixtures/laravel/User.php'))));
+
+	Packages::Passport->install($this->project, 'php8.4');
+
+	expect(File::get("{$this->project}/app/Models/User.php"))->toContain('class User extends Authenticatable implements OAuthenticatable, MustVerifyEmail');
+});
+
+it('gives the User model Sanctum tokens, or says how when it cannot', function () {
+	fakePackageProcesses();
+	File::ensureDirectoryExists("{$this->project}/app/Models");
+	File::copy(base_path('tests/Fixtures/laravel/User.php'), "{$this->project}/app/Models/User.php");
+
+	Packages::Sanctum->install($this->project, 'php8.4');
+	expect(File::get("{$this->project}/app/Models/User.php"))->toContain('use Laravel\\Sanctum\\HasApiTokens;')->toContain('use HasApiTokens, HasFactory, Notifiable;');
+
+	File::put("{$this->project}/app/Models/User.php", "<?php\nclass User {}\n");
+	expect(captureOutput(fn () => Packages::Sanctum->install($this->project, 'php8.4')))->toContain('Add the Laravel\\Sanctum\\HasApiTokens trait');
+});
+
+it("won't install Passport and Sanctum together", function () {
+	expect(Packages::conflictError([Packages::Sanctum, Packages::Passport]))->toContain('Pick either Sanctum or Passport')
+		->and(Packages::conflictError([Packages::Sanctum, Packages::Filament]))->toBeNull();
+});
+
+it("gives the panel a theme with Socialment's styles and builds it", function () {
+	fakePackageProcesses();
+	File::ensureDirectoryExists("{$this->project}/resources/css/filament/admin");
+	File::put("{$this->project}/resources/css/filament/admin/theme.css", "@import '../../../../vendor/filament/filament/resources/css/theme.css';\n");
+	File::copy(base_path('tests/Fixtures/laravel/vite.config.js'), "{$this->project}/vite.config.js");
+	File::put("{$this->project}/app/Providers/Filament/AdminPanelProvider.php", "        return \$panel\n            ->id('admin')\n            ->login()\n            ->colors([]);\n");
+
+	expect(Packages::Socialment->install($this->project, 'php8.4'))->toBeTrue();
+	Packages::Socialment->install($this->project, 'php8.4');
+
+	expect(File::get("{$this->project}/resources/css/filament/admin/theme.css"))->toEndWith("@source '../../../../vendor/chrisreedio/socialment/resources';\n")
+		->and(substr_count(File::get("{$this->project}/resources/css/filament/admin/theme.css"), 'socialment'))->toBe(1)
+		->and(substr_count(File::get("{$this->project}/app/Providers/Filament/AdminPanelProvider.php"), "            ->viteTheme('resources/css/filament/admin/theme.css')\n"))->toBe(1)
+		->and(substr_count(File::get("{$this->project}/vite.config.js"), 'filament/admin/theme.css'))->toBe(1)
+		->and(packageCommands())->toContain(['npm', 'run', 'build']);
+});
+
+it('creates the theme with Filament when the panel has none', function () {
+	fakePackageProcesses();
+	File::put("{$this->project}/app/Providers/Filament/AdminPanelProvider.php", "            ->login()\n");
+
+	Packages::Socialment->install($this->project, 'php8.4');
+
+	expect(packageCommands())->toContain(['php8.4', 'artisan', 'make:filament-theme', 'admin', '--pm=npm', '--no-interaction']);
 });
 
 it('stops at the first failing step', function () {

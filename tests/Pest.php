@@ -78,3 +78,18 @@ function githubReleases(array $releases): array
 		] : [],
 	])->all();
 }
+
+/** What Laravel Prompts (note(), warning(), …) printed while $callback ran */
+function captureOutput(callable $callback): string
+{
+	$output = new \Symfony\Component\Console\Output\BufferedOutput();
+	\Laravel\Prompts\Prompt::setOutput($output);
+
+	try {
+		$callback();
+	} finally {
+		\Laravel\Prompts\Prompt::setOutput(new \Symfony\Component\Console\Output\ConsoleOutput());
+	}
+
+	return $output->fetch();
+}
