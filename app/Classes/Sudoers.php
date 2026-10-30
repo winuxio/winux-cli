@@ -70,18 +70,78 @@ class Sudoers
 	}
 
 	/**
-	 * Commands that would still ask for a password. sudo -k ignores cached credentials for the check
-	 * (without clearing them), so a recent password prompt doesn't count as passwordless.
+	 * Commands that would still ask for a password.
 	 *
 	 * @return string[]
 	 */
 	public static function missing(): array
 	{
+		$allowed = static::passwordlessRules();
+
 		return collect(static::commands())
-			->reject(fn (array $command) => Process::run(['sudo', '-n', '-k', '-l', ...$command])->successful())
+			->reject(fn (array $command) => static::allows($allowed, $command))
 			->map(fn (array $command) => implode(' ', $command))
 			->values()
 			->all();
+	}
+
+	/**
+	 * The commands you may run as root without a password, from `sudo -n -l`. Listing needs no password
+	 * when any of your rules is NOPASSWD; otherwise it fails, and then nothing is passwordless anyway.
+	 * (`sudo -l <command>` can't tell: it succeeds for any command you may run, password or not.)
+	 *
+	 * @return string[]
+	 */
+	public static function passwordlessRules(): array
+	{
+		$listing = Process::run(['sudo', '-n', '-l']);
+		if ($listing->failed()) {
+			return [];
+		}
+
+		$allowed = [];
+		foreach (explode("\n", $listing->output()) as $line) {
+			// e.g. "    (root) NOPASSWD: /usr/sbin/nginx -t, /usr/bin/systemctl reload nginx"
+			if (!preg_match('/^\s+\(([^)]*)\)\s+(.+)$/', $line, $match)) {
+				continue;
+			}
+
+			$runAs = array_map('trim', explode(',', explode(':', $match[1])[0]));
+			if (!array_intersect($runAs, ['root', 'ALL'])) {
+				continue;
+			}
+
+			// A tag applies to the commands after it, until another tag changes it
+			$passwordless = false;
+			foreach (explode(', ', $match[2]) as $command) {
+				while (preg_match('/^([A-Z_]+):\s*/', $command, $tag)) {
+					$passwordless = match ($tag[1]) {
+						'NOPASSWD' => true,
+						'PASSWD' => false,
+						default => $passwordless,
+					};
+					$command = substr($command, strlen($tag[0]));
+				}
+				if ($passwordless) {
+					$allowed[] = trim($command);
+				}
+			}
+		}
+
+		return $allowed;
+	}
+
+	/** Whether $allowed covers $command: exactly, as a program allowed with any arguments, or as ALL */
+	protected static function allows(array $allowed, array $command): bool
+	{
+		$program = static::resolve($command[0]);
+		if ($program === null) {
+			return false;
+		}
+
+		$full = implode(' ', [$program, ...array_slice($command, 1)]);
+
+		return in_array('ALL', $allowed, true) || in_array($full, $allowed, true) || in_array($program, $allowed, true);
 	}
 
 	/**
@@ -130,7 +190,7 @@ class Sudoers
 	/** Whether winux's rules are in place (nginx -t is in every version of them) */
 	public static function isInstalled(): bool
 	{
-		return Process::run(['sudo', '-n', '-k', '-l', 'nginx', '-t'])->successful();
+		return static::allows(static::passwordlessRules(), ['nginx', '-t']);
 	}
 
 	public static function remove(): bool

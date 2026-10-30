@@ -97,8 +97,8 @@ it('rejects project names that would not map cleanly to a directory, domain, and
 	fakeProjectProcesses();
 
 	foreach (['project:create', 'project:import', 'project:delete', 'nginx:create'] as $command) {
-		// project:create and project:import take paths too; those are covered below
-		if (in_array($command, ['project:create', 'project:import'], true) && ($name === '..' || str_contains($name, '/'))) {
+		// The project commands take paths too; those are covered below
+		if (in_array($command, ['project:create', 'project:import', 'project:delete'], true) && ($name === '..' || str_contains($name, '/'))) {
 			continue;
 		}
 		expect(Artisan::call($command, ['projectName' => $name, '--no-interaction' => true]))->toBe(1)

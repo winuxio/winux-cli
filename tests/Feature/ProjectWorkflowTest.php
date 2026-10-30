@@ -133,6 +133,25 @@ it('adds the app around the files already in the directory', function () {
 		->and(glob("{$this->root}/work/.blog.winux-*"))->toBe([]);
 });
 
+it('takes back out only the app when deleting a project created around your files', function () {
+	fakeWorkflowProcesses();
+	$project = "{$this->root}/work/blog";
+	File::ensureDirectoryExists("$project/docs");
+	File::put("$project/docs/plan.md", "# Plan\n");
+	File::put("$project/README.md", "# Blog\n");
+	File::put("$project/.gitignore", "/vendor\n.DS_Store\n");
+	chdir($project);
+	Artisan::call('project:create', ['projectName' => '.', '--no-interaction' => true]);
+	File::put("$project/phpstan.neon", 'later');
+
+	expect(Artisan::call('project:delete', ['projectName' => '.', '--force' => true, '--delete-files' => true, '--no-interaction' => true]))->toBe(0)
+		->and(Artisan::output())->toContain('your own files are still there')->toContain('Also left in place')->toContain('phpstan.neon');
+
+	expect(Scaffold::entries($project))->toEqualCanonicalizing(['docs', 'README.md', '.gitignore', 'phpstan.neon'])
+		->and(File::get("$project/.gitignore"))->toBe("/vendor\n.DS_Store\n")
+		->and(Scaffold::recorded($project))->toBeNull();
+});
+
 it('stops before touching anything when existing files clash with the app', function () {
 	fakeWorkflowProcesses();
 	$project = "{$this->root}/work/blog";
@@ -166,8 +185,35 @@ it('asks before adding the app to a directory with files', function () {
 	File::put("{$this->root}/work/blog/README.md", "# Blog\n");
 
 	$this->artisan('project:create', ['projectName' => 'blog'])
-		->expectsConfirmation("{$this->root}/work/blog already has 1 item(s) (README.md). Add a Laravel app alongside them?", 'no')
+		->expectsConfirmation('Add a Laravel app to this directory?', 'no')
+		->expectsOutputToContain('Cancelled. Nothing was created.')
 		->assertFailed();
+
+	expect(ran(fn ($c) => in_array('create-project', $c, true)))->toBeFalse();
+});
+
+it('asks whether the name of the directory you are in means this directory', function () {
+	fakeWorkflowProcesses();
+	File::ensureDirectoryExists("{$this->root}/work/blog");
+	File::put("{$this->root}/work/blog/README.md", "# Blog\n");
+	chdir("{$this->root}/work/blog");
+
+	$this->artisan('project:create', ['projectName' => 'blog', '--php' => 'abc'])
+		->expectsConfirmation("You're already in blog. Create the project in this directory?", 'yes')
+		->assertFailed();
+
+	// --php=abc stops it right after choosing the directory
+	expect(ran(fn ($c) => in_array('create-project', $c, true)))->toBeFalse();
+});
+
+it('points a directory that already holds a Laravel app at project:import', function () {
+	fakeWorkflowProcesses();
+	File::ensureDirectoryExists("{$this->root}/work/blog");
+	File::put("{$this->root}/work/blog/artisan", '');
+	File::put("{$this->root}/work/blog/composer.json", '{}');
+
+	expect(Artisan::call('project:create', ['projectName' => 'blog', '--no-interaction' => true]))->toBe(1)
+		->and(Artisan::output())->toContain('is already a Laravel app')->toContain("winux project:import {$this->root}/work/blog");
 
 	expect(ran(fn ($c) => in_array('create-project', $c, true)))->toBeFalse();
 });

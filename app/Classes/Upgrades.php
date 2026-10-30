@@ -21,6 +21,10 @@ class Upgrades
 			'summary' => "Creating and importing projects no longer asks for your password: Postgres gets a role named after you, and nginx/PHP-FPM reloads are allowed in /etc/sudoers.d/winux.",
 			'checks' => ['Postgres without sudo', 'Passwordless nginx/PHP-FPM reloads'],
 		],
+		'0.3.5' => [
+			'summary' => "0.3.4 could think nginx/PHP-FPM reloads were already passwordless when they weren't (if any of your sudo rules is NOPASSWD), and skip /etc/sudoers.d/winux.",
+			'checks' => ['Passwordless nginx/PHP-FPM reloads'],
+		],
 	];
 
 	/** Commands that apply the changes themselves, or shouldn't print anything extra */

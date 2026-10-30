@@ -743,7 +743,19 @@ class Project
 			}
 		}
 
-		if ($deleteDirectory && is_dir($this->path)) {
+		// An app added around your own files (docs, a README) comes back out without them
+		if ($deleteDirectory && is_dir($this->path) && Scaffold::recorded($this->path)) {
+			$left = Scaffold::remove($this->path);
+			if ($left === null) {
+				error("Failed to delete some of the app's files in {$this->path}.");
+				return false;
+			}
+
+			info("Deleted the app's files from {$this->path}; your own files are still there.");
+			if ($left) {
+				warning('Also left in place, since they were added after the app was created: ' . implode(', ', $left) . '.');
+			}
+		} elseif ($deleteDirectory && is_dir($this->path)) {
 			if (!File::deleteDirectory($this->path)) {
 				error('Failed to delete the project directory.');
 				return false;
@@ -848,8 +860,9 @@ class Project
 		// Files both have, where yours win
 		$kept = array_values(array_intersect(Scaffold::KEEP_EXISTING, Scaffold::entries($this->path), Scaffold::entries($staging)));
 
+		Scaffold::record($staging, $this->path);
 		if (!Scaffold::merge($staging, $this->path)) {
-			error("Couldn't move the Laravel app from $staging into {$this->path}. Whatever was moved stays; your own files were not changed.");
+			error("Couldn't move the Laravel app from $staging into {$this->path}. Your own files were not changed; `winux project:delete {$this->name}` takes back out what was moved.");
 			return false;
 		}
 
