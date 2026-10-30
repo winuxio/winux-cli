@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.5](https://github.com/winuxio/winux-cli/compare/v0.3.4...v0.3.5) (2026-10-30)
+
+
+### Bug Fixes
+
+* detect passwordless sudo correctly and create projects in place ([#26](https://github.com/winuxio/winux-cli/issues/26)) ([c8ead90](https://github.com/winuxio/winux-cli/commit/c8ead904ad885affd72da1cb11c2c7c7af97fade))
+
 ## [0.3.4](https://github.com/winuxio/winux-cli/compare/v0.3.3...v0.3.4) (2026-10-29)
 
 
