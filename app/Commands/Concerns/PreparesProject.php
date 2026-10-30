@@ -25,9 +25,15 @@ trait PreparesProject
 	 * @param bool $mustExist Whether the project directory itself must exist (import), or only its parent (create)
 	 * @return array{0: string, 1: string}|null
 	 */
+	/** Whether resolveTarget() reads $target as a path (., .., ~ or anything with a /) rather than a name */
+	protected function isPath(string $target): bool
+	{
+		return str_contains($target, '/') || in_array($target, ['.', '..', '~'], true);
+	}
+
 	protected function resolveTarget(string $target, bool $mustExist): ?array
 	{
-		if (!str_contains($target, '/') && !in_array($target, ['.', '..', '~'], true)) {
+		if (!$this->isPath($target)) {
 			return [$target, getcwd()];
 		}
 

@@ -218,6 +218,18 @@ it('points a directory that already holds a Laravel app at project:import', func
 	expect(ran(fn ($c) => in_array('create-project', $c, true)))->toBeFalse();
 });
 
+it('takes . or a path at the name prompt', function () {
+	fakeWorkflowProcesses();
+	File::ensureDirectoryExists("{$this->root}/work/blog");
+	File::put("{$this->root}/work/blog/README.md", "# Blog\n");
+	chdir("{$this->root}/work/blog");
+
+	$this->artisan('project:create')
+		->expectsQuestion('Project name', '.')
+		->expectsConfirmation('Add a Laravel app to this directory?', 'no')
+		->assertFailed();
+});
+
 it('needs a project name without a terminal', function () {
 	fakeWorkflowProcesses();
 

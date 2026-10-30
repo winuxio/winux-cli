@@ -53,7 +53,7 @@ class CreateProject extends Command
 				error('Pass a project name, or . to create the project in the current directory.');
 				return Command::FAILURE;
 			}
-			$projectName = text('Project name', placeholder: 'my-app', required: true, validate: fn ($name) => Project::nameError($name), hint: 'Creates ' . getcwd() . '/<name>; enter . to use this directory');
+			$projectName = text('Project name', placeholder: 'my-app', required: true, validate: fn ($name) => $this->isPath($name) ? null : Project::nameError($name), hint: 'Creates ' . getcwd() . '/<name>; enter . to use this directory');
 		}
 
 		// Inside ~/sites/blog (with its README), `project:create blog` almost always means here, not ~/sites/blog/blog
