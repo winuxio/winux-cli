@@ -269,6 +269,7 @@ it('rejects unknown --github and --package values before creating anything', fun
 })->with([
 	[['--github' => 'secret'], "--github must be 'private' or 'public'"],
 	[['--package' => ['nova']], "Unknown package 'nova'"],
+	[['--package' => ['sanctum', 'passport']], 'Pick either Sanctum or Passport'],
 ]);
 
 it('does not claim the project is live when migrations fail', function () {

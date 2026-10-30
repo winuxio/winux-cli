@@ -122,6 +122,39 @@ enum Packages: string
 		};
 	}
 
+	/**
+	 * Packages that can't be installed alongside this one.
+	 *
+	 * @return Packages[]
+	 */
+	public function conflicts(): array
+	{
+		return match ($this) {
+			// Both put a HasApiTokens trait on the User model
+			self::Sanctum => [self::Passport],
+			self::Passport => [self::Sanctum],
+			default => [],
+		};
+	}
+
+	/**
+	 * Why $packages can't be installed together, or null when they can.
+	 *
+	 * @param Packages[] $packages
+	 */
+	public static function conflictError(array $packages): ?string
+	{
+		foreach ($packages as $package) {
+			foreach ($package->conflicts() as $other) {
+				if (in_array($other, $packages, true)) {
+					return "Pick either {$package->label()} or {$other->label()}: both add a HasApiTokens trait to the User model.";
+				}
+			}
+		}
+
+		return null;
+	}
+
 	/** Whether installing it adds migrations to run */
 	public function addsMigrations(): bool
 	{
@@ -150,6 +183,22 @@ enum Packages: string
 
 	public function install(string $path, string $php = 'php'): bool
 	{
+		$guzzle = static::lockedVersion($path, 'guzzlehttp/guzzle');
+		if (!$this->runInstallers($path, $php)) {
+			return false;
+		}
+
+		// Reverb needs pusher/pusher-php-server, which only works with Guzzle 7
+		$now = static::lockedVersion($path, 'guzzlehttp/guzzle');
+		if ($guzzle && $now && (int) ltrim($now, 'v') < (int) ltrim($guzzle, 'v')) {
+			warning("Composer moved guzzlehttp/guzzle from $guzzle to $now so {$this->label()} fits.");
+		}
+
+		return $this->configure($path, $php);
+	}
+
+	protected function runInstallers(string $path, string $php): bool
+	{
 		$composerPath = Project::composerPath();
 		$composer = $composerPath ?? 'composer';
 
@@ -173,7 +222,21 @@ enum Packages: string
 			}
 		}
 
-		return $this->configure($path);
+		return true;
+	}
+
+	/** The version of $package in the project's composer.lock, if it's there */
+	protected static function lockedVersion(string $path, string $package): ?string
+	{
+		$lock = is_file("$path/composer.lock") ? json_decode((string) file_get_contents("$path/composer.lock"), true) : null;
+
+		foreach ([...($lock['packages'] ?? []), ...($lock['packages-dev'] ?? [])] as $locked) {
+			if (($locked['name'] ?? null) === $package) {
+				return $locked['version'] ?? null;
+			}
+		}
+
+		return null;
 	}
 
 	/**
@@ -192,8 +255,8 @@ enum Packages: string
 			self::Telescope => [['telescope:install']],
 			self::Horizon => [['horizon:install']],
 			self::Pulse => [['vendor:publish', '--tag=pulse-config'], ['vendor:publish', '--tag=pulse-migrations']],
-			// With npm it also adds and builds laravel-echo and pusher-js, which the generated echo.js imports
-			self::Reverb => [['install:broadcasting', '--reverb', ...$withComposer, ...(Platform::commandExists('npm') ? [] : ['--without-node'])]],
+			// Its own npm step needs a terminal (it fails without one), so configure() runs npm instead
+			self::Reverb => [['install:broadcasting', '--reverb', ...$withComposer, '--without-node']],
 			self::Sanctum => [['install:api', ...$withComposer, '--without-migration-prompt']],
 			self::Passport => [['install:api', '--passport', ...$withComposer, '--without-migration-prompt']],
 			self::Socialment => [['socialment:install']],
@@ -205,7 +268,7 @@ enum Packages: string
 	/**
 	 * Wiring the installers leave to you.
 	 */
-	protected function configure(string $path): bool
+	protected function configure(string $path, string $php = 'php'): bool
 	{
 		switch ($this) {
 			case self::Larastan:
@@ -240,30 +303,160 @@ enum Packages: string
 				break;
 
 			case self::Reverb:
-				if (!Platform::commandExists('npm')) {
-					warning('npm was not found, so the front end is missing laravel-echo and pusher-js: run `npm install --save-dev laravel-echo pusher-js` once Node is installed.');
-				}
+				// The generated resources/js/echo.js imports these
+				static::npm($path, ['install', '--save-dev', 'laravel-echo', 'pusher-js'], 'npm install --save-dev laravel-echo pusher-js');
 				break;
 
 			case self::Sanctum:
-				note('Add the Laravel\Sanctum\HasApiTokens trait to your User model to issue API tokens.');
+				if (!static::addTrait("$path/app/Models/User.php", 'Laravel\Sanctum\HasApiTokens')) {
+					warning('Add the Laravel\Sanctum\HasApiTokens trait to your User model to issue API tokens.');
+				}
 				break;
 
 			case self::Passport:
-				note('Add the Laravel\Passport\HasApiTokens trait to your User model, and an `api` guard using the passport driver in config/auth.php.');
+				$user = "$path/app/Models/User.php";
+				if (!static::addTrait($user, 'Laravel\Passport\HasApiTokens') || !static::addInterface($user, 'Laravel\Passport\Contracts\OAuthenticatable')) {
+					warning('Add the Laravel\Passport\HasApiTokens trait to your User model, and have it implement Laravel\Passport\Contracts\OAuthenticatable.');
+				}
+				if (!static::insertAfter("$path/config/auth.php", "/'guards' => \[\n(\s*)'web' => \[\n(?:.*\n)*?\s*\],\n/", "        'api' => [\n            'driver' => 'passport',\n            'provider' => 'users',\n        ],\n")) {
+					warning('Add an `api` guard using the passport driver to config/auth.php.');
+				}
 				break;
 
 			case self::Socialment:
 				if (!static::insertAfter("$path/app/Providers/Filament/AdminPanelProvider.php", '/^(\s*)->login\(\)\n/m', "            ->plugin(\\ChrisReedIO\\Socialment\\SocialmentPlugin::make())\n")) {
 					warning('Add `->plugin(\ChrisReedIO\Socialment\SocialmentPlugin::make())` to your Filament panel.');
 				}
-				note("Socialment's styles need a custom Filament theme: see https://github.com/chrisreedio/socialment#2-add-styling-support. Then add your Socialite providers.");
+				if (!static::socialmentTheme($path, $php)) {
+					warning("Socialment's styles need a custom Filament theme with `@source '../../../../vendor/chrisreedio/socialment/resources';`: see https://github.com/chrisreedio/socialment#2-add-styling-support.");
+				}
+				note('Then add your Socialite providers: see https://github.com/chrisreedio/socialment#provider-configuration.');
 				break;
 
 			default:
 				break;
 		}
 
+		return true;
+	}
+
+	/**
+	 * Give the admin panel a custom theme (unless it has one) that includes Socialment's views, and build it.
+	 */
+	protected static function socialmentTheme(string $path, string $php): bool
+	{
+		$theme = "$path/resources/css/filament/admin/theme.css";
+		if (!is_file($theme)) {
+			if (!Platform::commandExists('npm')) {
+				return false;
+			}
+			$process = Process::path($path)->forever()->run([$php, 'artisan', 'make:filament-theme', 'admin', '--pm=npm', '--no-interaction']);
+			if ($process->failed() || !is_file($theme)) {
+				return false;
+			}
+		}
+
+		$source = "@source '../../../../vendor/chrisreedio/socialment/resources';";
+		$contents = File::get($theme);
+		if (!str_contains($contents, 'chrisreedio/socialment')) {
+			File::put($theme, rtrim($contents) . "\n$source\n");
+		}
+
+		// make:filament-theme adds the theme to Vite's inputs, but not to the panel
+		$vite = "$path/vite.config.js";
+		$registered = static::insertAfter("$path/app/Providers/Filament/AdminPanelProvider.php", '/^(\s*)->login\(\)\n/m', "            ->viteTheme('resources/css/filament/admin/theme.css')\n")
+			&& (is_file($vite) && str_contains(File::get($vite), 'resources/css/filament/admin/theme.css')
+				|| static::insertAfter($vite, "/input: \[/", "'resources/css/filament/admin/theme.css', "));
+
+		return $registered && static::npm($path, ['run', 'build'], 'npm run build');
+	}
+
+	/**
+	 * Run npm in the project, or say what to run once Node is installed.
+	 *
+	 * @param string[] $arguments
+	 */
+	protected static function npm(string $path, array $arguments, string $command): bool
+	{
+		if (!Platform::commandExists('npm')) {
+			warning("npm was not found: run `$command` once Node is installed.");
+			return false;
+		}
+
+		$process = Process::path($path)->forever()->run(['npm', ...$arguments]);
+		if ($process->failed()) {
+			warning("`$command` failed: " . trim($process->errorOutput() ?: $process->output()));
+			return false;
+		}
+
+		return true;
+	}
+
+	/**
+	 * Import $trait into the class in $file and use it, alongside the traits it already uses.
+	 */
+	protected static function addTrait(string $file, string $trait): bool
+	{
+		$name = class_basename($trait);
+		if (!is_file($file) || !static::addImport($file, $trait)) {
+			return false;
+		}
+
+		$contents = File::get($file);
+		if (preg_match("/^\s*use [^;\\\\]*\b$name\b[^;]*;/m", $contents)) {
+			return true;
+		}
+
+		// The class's first `use A, B;` line
+		$updated = preg_replace('/(\{\n(?:\s*\/\*\*.*?\*\/\n)?\s*use )([A-Za-z]+(?:, [A-Za-z]+)*;)/s', "\${1}$name, \${2}", $contents, 1, $count);
+		if (!$count) {
+			return false;
+		}
+
+		File::put($file, $updated);
+		return true;
+	}
+
+	/**
+	 * Import $interface into $file and add it to the class's implements list.
+	 */
+	protected static function addInterface(string $file, string $interface): bool
+	{
+		$name = class_basename($interface);
+		if (!is_file($file) || !static::addImport($file, $interface)) {
+			return false;
+		}
+
+		$contents = File::get($file);
+		if (preg_match("/^class \w+[^{]*\bimplements\b[^{]*\b$name\b/m", $contents)) {
+			return true;
+		}
+
+		$updated = preg_replace('/^(class \w+(?: extends [\w\\\\]+)?)( implements ([\w\\\\, ]+))?(\s*\n?\{)/m', '$1 implements ' . $name . '$2$4', $contents, 1, $count);
+		$updated = str_replace(" implements $name implements ", " implements $name, ", (string) $updated);
+		if (!$count) {
+			return false;
+		}
+
+		File::put($file, $updated);
+		return true;
+	}
+
+	/** Add `use $class;` after the file's last import */
+	protected static function addImport(string $file, string $class): bool
+	{
+		$contents = File::get($file);
+		if (str_contains($contents, "use $class;")) {
+			return true;
+		}
+
+		if (!preg_match_all('/^use [^;]+;\n/m', $contents, $matches, PREG_OFFSET_CAPTURE)) {
+			return false;
+		}
+
+		$last = end($matches[0]);
+		$at = $last[1] + strlen($last[0]);
+		File::put($file, substr($contents, 0, $at) . "use $class;\n" . substr($contents, $at));
 		return true;
 	}
 

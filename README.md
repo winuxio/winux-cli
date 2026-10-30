@@ -153,11 +153,11 @@ The packages, each the newest version compatible with the app (`--package=<name>
 | `horizon` | Horizon |
 | `pulse` | Pulse, with its config and migrations |
 | `sentry` | Sentry, hooked into `bootstrap/app.php` (set `SENTRY_LARAVEL_DSN`) |
-| `reverb` | Reverb via `install:broadcasting`, plus Echo's npm packages when `npm` is available |
-| `sanctum` | Sanctum and `routes/api.php` via `install:api` |
-| `passport` | Passport via `install:api --passport` |
+| `reverb` | Reverb via `install:broadcasting`, plus Echo's npm packages when `npm` is available (Reverb needs Guzzle 7, so Composer may downgrade Guzzle 8) |
+| `sanctum` | Sanctum and `routes/api.php` via `install:api`, with `HasApiTokens` on the User model |
+| `passport` | Passport via `install:api --passport`, with `HasApiTokens` and `OAuthenticatable` on the User model and an `api` guard in `config/auth.php` (pick Passport or Sanctum, not both) |
 | `saloon` | Saloon and its Laravel plugin |
-| `socialment` | Socialment, added to the Filament panel (installs Filament too) |
+| `socialment` | Socialment, added to the Filament panel with a custom theme that includes its styles, built with `npm` (installs Filament too) |
 | `fontawesome` | Blade Font Awesome |
 | `s3` | The S3 filesystem driver |
 | `activitylog` | spatie/laravel-activitylog, with its migration |
